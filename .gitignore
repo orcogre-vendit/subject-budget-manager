@@ -39,3 +39,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
+
+# database (SQLite, dev)
+*.db
+*.db-journal
+prisma/*.db
+
+# uploaded evidence files
+/uploads
+/legacy
+
+# playwright mcp artifacts
+/.playwright-mcp
+
+# oh-my-claudecode local state
+/.omc

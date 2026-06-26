@@ -1,0 +1,152 @@
+// 연구실 과제 예산집행 관리 시스템 — Prisma schema
+// 레거시 MS Access(과제관리_new_Backup.accdb)를 정규화하여 재구축.
+// SQLite로 시작(enum 미지원 → String 사용, 금액은 원 단위 Int).
+// 자세한 설계 배경은 legacy/ 및 프로젝트 메모리 참고.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// 비목 (예산 대분류) — 정부 R&D 표준 분류 최상위
+model BudgetItem {
+  id           Int             @id @default(autoincrement())
+  name         String          @unique
+  sortOrder    Int             @default(0)
+  subItems     BudgetSubItem[]
+  transactions Transaction[]
+}
+
+/// 세목 (예산 중분류)
+model BudgetSubItem {
+  id           Int                @id @default(autoincrement())
+  name         String
+  budgetItemId Int
+  budgetItem   BudgetItem         @relation(fields: [budgetItemId], references: [id])
+  detailItems  BudgetDetailItem[]
+  transactions Transaction[]
+
+  @@unique([budgetItemId, name])
+}
+
+/// 세세목 (예산 소분류)
+model BudgetDetailItem {
+  id              Int           @id @default(autoincrement())
+  name            String
+  budgetSubItemId Int
+  budgetSubItem   BudgetSubItem @relation(fields: [budgetSubItemId], references: [id])
+  transactions    Transaction[]
+
+  @@unique([budgetSubItemId, name])
+}
+
+/// 연구원 명단 — ⚠️ 민감정보(주민번호/계좌/주소) 평문 저장(현 단계 결정)
+model Researcher {
+  id              Int       @id @default(autoincrement())
+  employeeNo      String? // 학번/사번
+  name            String // 이름
+  ssn             String? // 주민등록번호
+  sciTechNo       String? // 과학기술인번호
+  title           String? // 직책
+  affiliation     String? // 소속
+  workPhone       String? // 직장전화번호
+  phone           String? // 전화번호
+  email           String? // 이메일
+  bankName        String? // 은행명
+  accountNo       String? // 계좌번호
+  homeAddress     String? // 집주소
+  workAddress     String? // 직장주소
+  researcherRegNo String? // 연구자등록번호
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  ledProjects     Project[] @relation("PI")
+}
+
+/// 과제 (마스터) — 레거시 과제목록
+model Project {
+  id              Int           @id @default(autoincrement())
+  code            String?       @unique // 과제번호
+  name            String // 과제명
+  businessName    String? // 사업명
+  piName          String? // 연구책임(텍스트, 레거시 호환)
+  piId            Int? // 연구책임 연구원 FK(선택)
+  pi              Researcher?   @relation("PI", fields: [piId], references: [id])
+  managerName     String? // 과제담당
+  hostOrg         String? // 주관연구기관
+  fundingAgency   String? // 지원기관
+  indirectRate    Float         @default(0) // 간접징수비율(%)
+  status          String? // 진행상태
+  region          String? // 수행지역
+  cardType        String? // 카드구분
+  classification  String? // 과제분류
+  category        String? // 과제구분
+  researchType    String? // 연구형태
+  managementGroup String? // 관리그룹
+  startDate       DateTime? // 연구시작일
+  endDate         DateTime? // 연구종료일
+  active          Boolean       @default(true) // USE_YN
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  years           ProjectYear[]
+}
+
+/// 연차(차수/회계연도) — 레거시 "ITRC3년차" 같은 테이블 분할을 행으로 정규화
+model ProjectYear {
+  id           Int           @id @default(autoincrement())
+  projectId    Int
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  yearNo       Int // 1,2,3 년차
+  label        String? // 표시용 라벨(예: "ITRC3년차")
+  fiscalYear   Int? // 회계연도
+  budgetCash   Int           @default(0) // 당해연구현금(예산, 원)
+  startDate    DateTime?
+  endDate      DateTime?
+  ledgerType   String        @default("PROJECT") // PROJECT | PERSONAL_MILEAGE | LAB_MILEAGE
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+
+  @@unique([projectId, yearNo])
+}
+
+/// 집행 내역 (원장) — 레거시 20여 개 장부 테이블을 단일 테이블로 통합
+/// 잔액 = Σ(direction=IN) − Σ(direction=OUT). 세목/비목 변경은 IN+OUT 쌍거래.
+model Transaction {
+  id                 Int               @id @default(autoincrement())
+  projectYearId      Int
+  projectYear        ProjectYear       @relation(fields: [projectYearId], references: [id], onDelete: Cascade)
+  date               DateTime // 날짜
+  status             String            @default("신청") // 상태: 신청/완료 등
+  direction          String // 입출구분: IN(입금) | OUT(출금)
+  amount             Int // 금액(원, 항상 양수)
+  description        String? // 적요
+  budgetItemId       Int?
+  budgetItem         BudgetItem?       @relation(fields: [budgetItemId], references: [id])
+  budgetSubItemId    Int?
+  budgetSubItem      BudgetSubItem?    @relation(fields: [budgetSubItemId], references: [id])
+  budgetDetailItemId Int?
+  budgetDetailItem   BudgetDetailItem? @relation(fields: [budgetDetailItemId], references: [id])
+  attachments        Attachment[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([projectYearId])
+  @@index([budgetItemId])
+  @@index([date])
+}
+
+/// 증빙 첨부 — Access 첨부필드 대체, 파일은 디스크에 저장
+model Attachment {
+  id            Int         @id @default(autoincrement())
+  transactionId Int
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  fileName      String // 원본 파일명
+  storedName    String // 저장 파일명(디스크)
+  mimeType      String?
+  size          Int         @default(0)
+  uploadedAt    DateTime    @default(now())
+}
