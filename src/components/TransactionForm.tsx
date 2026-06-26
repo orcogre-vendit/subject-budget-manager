@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import type { FormState } from "@/app/projects/actions";
 
@@ -19,6 +19,101 @@ type Action = (prev: FormState, formData: FormData) => Promise<FormState>;
 const inputCls =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900";
 
+/**
+ * 비목→세목→세세목 연쇄 셀렉트. 내부 useState로 연동하되,
+ * 액션 결과(성공:초기화 / 실패:입력복원)에 따라 부모가 key를 바꿔 리마운트시키므로
+ * effect 없이 항상 올바른 초기값에서 시작한다.
+ */
+function CategorySelects({
+  budgetTree,
+  initial,
+  error,
+}: {
+  budgetTree: BudgetTree;
+  initial: Record<string, string>;
+  error?: string;
+}) {
+  const [itemId, setItemId] = useState(initial.budgetItemId ?? "");
+  const [subId, setSubId] = useState(initial.budgetSubItemId ?? "");
+  const [detailId, setDetailId] = useState(initial.budgetDetailItemId ?? "");
+
+  const subOptions =
+    budgetTree.find((i) => String(i.id) === itemId)?.subItems ?? [];
+  const detailOptions =
+    subOptions.find((s) => String(s.id) === subId)?.detailItems ?? [];
+
+  return (
+    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-700">
+          비목<span className="ml-0.5 text-red-500">*</span>
+        </label>
+        <select
+          name="budgetItemId"
+          value={itemId}
+          onChange={(e) => {
+            setItemId(e.target.value);
+            setSubId("");
+            setDetailId("");
+          }}
+          className={inputCls}
+        >
+          <option value="">선택</option>
+          {budgetTree.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.name}
+            </option>
+          ))}
+        </select>
+        {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-700">
+          세목
+        </label>
+        <select
+          name="budgetSubItemId"
+          value={subId}
+          disabled={!itemId}
+          onChange={(e) => {
+            setSubId(e.target.value);
+            setDetailId("");
+          }}
+          className={inputCls + " disabled:bg-slate-100"}
+        >
+          <option value="">선택</option>
+          {subOptions.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-700">
+          세세목
+        </label>
+        <select
+          name="budgetDetailItemId"
+          value={detailId}
+          disabled={!subId || detailOptions.length === 0}
+          onChange={(e) => setDetailId(e.target.value)}
+          className={inputCls + " disabled:bg-slate-100"}
+        >
+          <option value="">선택</option>
+          {detailOptions.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 export default function TransactionForm({
   budgetTree,
   action,
@@ -36,26 +131,10 @@ export default function TransactionForm({
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const v = state.values ?? defaultValues;
-
-  const [itemId, setItemId] = useState(v.budgetItemId ?? "");
-  const [subId, setSubId] = useState(v.budgetSubItemId ?? "");
-  const [detailId, setDetailId] = useState(v.budgetDetailItemId ?? "");
-
-  // 액션 결과(검증실패: 입력복원 / 성공: 빈 값으로 초기화)에 셀렉트 동기화
-  useEffect(() => {
-    if (state.values) {
-      setItemId(state.values.budgetItemId ?? "");
-      setSubId(state.values.budgetSubItemId ?? "");
-      setDetailId(state.values.budgetDetailItemId ?? "");
-    }
-  }, [state]);
-
-  const subOptions =
-    budgetTree.find((i) => String(i.id) === itemId)?.subItems ?? [];
-  const detailOptions =
-    subOptions.find((s) => String(s.id) === subId)?.detailItems ?? [];
-
   const err = (k: string) => state.fieldErrors?.[k];
+
+  // 액션 결과가 바뀔 때마다 연쇄 셀렉트를 새 초기값으로 리마운트
+  const catKey = `${v.budgetItemId ?? ""}|${v.budgetSubItemId ?? ""}|${v.budgetDetailItemId ?? ""}`;
 
   return (
     <form action={formAction} className="mt-4">
@@ -140,76 +219,12 @@ export default function TransactionForm({
       </div>
 
       {/* 비목 → 세목 → 세세목 */}
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            비목<span className="ml-0.5 text-red-500">*</span>
-          </label>
-          <select
-            name="budgetItemId"
-            value={itemId}
-            onChange={(e) => {
-              setItemId(e.target.value);
-              setSubId("");
-              setDetailId("");
-            }}
-            className={inputCls}
-          >
-            <option value="">선택</option>
-            {budgetTree.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-          {err("budgetItemId") && (
-            <p className="mt-1 text-xs text-red-600">{err("budgetItemId")}</p>
-          )}
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            세목
-          </label>
-          <select
-            name="budgetSubItemId"
-            value={subId}
-            disabled={!itemId}
-            onChange={(e) => {
-              setSubId(e.target.value);
-              setDetailId("");
-            }}
-            className={inputCls + " disabled:bg-slate-100"}
-          >
-            <option value="">선택</option>
-            {subOptions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            세세목
-          </label>
-          <select
-            name="budgetDetailItemId"
-            value={detailId}
-            disabled={!subId || detailOptions.length === 0}
-            onChange={(e) => setDetailId(e.target.value)}
-            className={inputCls + " disabled:bg-slate-100"}
-          >
-            <option value="">선택</option>
-            {detailOptions.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <CategorySelects
+        key={catKey}
+        budgetTree={budgetTree}
+        initial={v}
+        error={err("budgetItemId")}
+      />
 
       {/* 적요 */}
       <div className="mt-4">
