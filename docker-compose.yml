@@ -1,0 +1,16 @@
+# 개인 서버 self-host용. 이미지를 GHCR에서 받거나 로컬 빌드.
+services:
+  app:
+    # 로컬 빌드: docker compose up --build
+    build: .
+    # GHCR 이미지 사용 시 build 대신 아래 주석 해제:
+    # image: ghcr.io/orcogre-vendit/subject-budget-manager:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:/app/data/app.db
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - ./data:/app/data # SQLite DB 영속
+      - ./uploads:/app/uploads # 증빙 파일 영속
+    restart: unless-stopped

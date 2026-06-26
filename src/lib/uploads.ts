@@ -1,8 +1,9 @@
 import { mkdir, writeFile, unlink } from "fs/promises";
 import path from "path";
 
-/** 업로드 파일 저장 위치 (프로젝트 루트/uploads, gitignore) */
-export const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+/** 업로드 파일 저장 위치. 배포 시 UPLOAD_DIR로 볼륨 경로 지정(기본: 프로젝트 루트/uploads) */
+export const UPLOAD_DIR =
+  process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 

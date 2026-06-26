@@ -41,6 +41,33 @@ npx prisma db seed          # 비목/세목/세세목 기준정보 적재
 npm run dev                 # http://localhost:3000
 ```
 
+## 배포 (개인 서버 self-host)
+
+이 앱은 Next.js 모놀리식(서버 액션 + Prisma + SQLite + 로컬 파일 업로드)이라 단일 Docker 컨테이너로 self-host 합니다. SQLite DB와 증빙 파일은 볼륨에 영속 저장됩니다.
+
+```bash
+# 로컬 빌드 후 실행
+docker compose up --build -d
+# http://localhost:3000  (data/, uploads/ 디렉토리에 영속)
+```
+
+GitHub Actions가 `main` 푸시마다 이미지를 [GHCR](https://ghcr.io)에 푸시하므로, 서버에서는 빌드 없이 pull만 하면 됩니다:
+
+```bash
+docker pull ghcr.io/orcogre-vendit/subject-budget-manager:latest
+# docker-compose.yml에서 build: . 대신 image: 줄을 사용
+```
+
+컨테이너 시작 시 마이그레이션(`prisma migrate deploy`)과 기준정보 seed가 자동 적용됩니다.
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `DATABASE_URL` | `file:/app/data/app.db` | SQLite 경로(볼륨) |
+| `UPLOAD_DIR` | `/app/uploads` | 증빙 저장 경로(볼륨) |
+| `PORT` | `3000` | 포트 |
+
+> Vercel은 서버리스 파일시스템이 임시·읽기전용이라 로컬 SQLite·파일 업로드와 맞지 않습니다. 이 앱은 영속 디스크가 있는 서버(개인 서버/Fly.io/Railway 등)에 self-host 하는 구성입니다.
+
 ## 라이선스
 
 내부용 프로젝트입니다.
