@@ -56,3 +56,6 @@ prisma/*.db
 
 # oh-my-claudecode local state
 /.omc
+
+# 비공개 분석 문서(보안 취약점 포함 — 절대 커밋 금지)
+/_private

@@ -51,6 +51,7 @@ export default async function LedgerPage({
   let totalIn = 0;
   let totalOut = 0;
   for (const t of transactions) {
+    if (t.status === "취소") continue; // 취소 거래는 잔액 집계 제외
     const key = t.budgetItem?.name ?? "(미분류)";
     const e = byItem.get(key) ?? { in: 0, out: 0 };
     if (t.direction === "IN") {
@@ -189,6 +190,7 @@ export default async function LedgerPage({
                   .filter(Boolean)
                   .join(" › ");
                 const isIn = t.direction === "IN";
+                const isCancelled = t.status === "취소";
                 return (
                   <tr
                     key={t.id}
@@ -202,7 +204,9 @@ export default async function LedgerPage({
                         className={`rounded px-1.5 py-0.5 text-xs ${
                           t.status === "완료"
                             ? "bg-green-100 text-green-700"
-                            : "bg-amber-100 text-amber-700"
+                            : t.status === "취소"
+                              ? "bg-slate-200 text-slate-500"
+                              : "bg-amber-100 text-amber-700"
                         }`}
                       >
                         {t.status}
@@ -221,7 +225,11 @@ export default async function LedgerPage({
                     </td>
                     <td
                       className={`whitespace-nowrap px-3 py-2.5 text-right font-medium ${
-                        isIn ? "text-blue-600" : "text-red-600"
+                        isCancelled
+                          ? "text-slate-400 line-through"
+                          : isIn
+                            ? "text-blue-600"
+                            : "text-red-600"
                       }`}
                     >
                       {isIn ? "+" : "−"}

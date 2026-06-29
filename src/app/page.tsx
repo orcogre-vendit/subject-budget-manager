@@ -38,7 +38,11 @@ export default async function DashboardPage() {
     prisma.researcher.count(),
     prisma.transaction.count(),
     prisma.projectYear.aggregate({ _sum: { budgetCash: true } }),
-    prisma.transaction.groupBy({ by: ["direction"], _sum: { amount: true } }),
+    prisma.transaction.groupBy({
+      by: ["direction"],
+      where: { status: { not: "취소" } },
+      _sum: { amount: true },
+    }),
     prisma.project.findMany({
       where: { active: true },
       orderBy: [{ code: "desc" }, { id: "desc" }],
@@ -46,10 +50,12 @@ export default async function DashboardPage() {
     }),
     prisma.transaction.groupBy({
       by: ["projectYearId", "direction"],
+      where: { status: { not: "취소" } },
       _sum: { amount: true },
     }),
     prisma.transaction.groupBy({
       by: ["budgetItemId", "direction"],
+      where: { status: { not: "취소" } },
       _sum: { amount: true },
     }),
     prisma.budgetItem.findMany({ orderBy: { sortOrder: "asc" } }),

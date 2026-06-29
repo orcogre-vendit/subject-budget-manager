@@ -177,6 +177,7 @@ export default function TransactionForm({
           >
             <option value="신청">신청</option>
             <option value="완료">완료</option>
+            <option value="취소">취소</option>
           </select>
         </div>
 
