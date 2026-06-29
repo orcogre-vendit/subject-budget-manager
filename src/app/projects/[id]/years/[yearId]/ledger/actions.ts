@@ -22,7 +22,7 @@ function parseTx(fd: FormData): Record<string, string> {
     status: get("status") || "신청",
     date: get("date"),
     direction: get("direction"),
-    amount: get("amount"),
+    amount: get("amount").replace(/,/g, ""), // 콤마 제거
     description: get("description"),
     budgetItemId: get("budgetItemId"),
     budgetSubItemId: get("budgetSubItemId"),

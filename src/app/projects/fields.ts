@@ -15,6 +15,7 @@ export interface ProjectField {
   placeholder?: string;
   options?: string[]; // select
   suffix?: string; // 단위 표시 (%, 원 등)
+  money?: boolean; // 금액 입력(3자리 콤마)
   full?: boolean; // 한 줄 전체 차지
 }
 
@@ -49,7 +50,7 @@ export const PROJECT_YEAR_FIELDS: ProjectField[] = [
   { key: "yearNo", label: "연차", type: "number", required: true, placeholder: "예: 1" },
   { key: "label", label: "표시 라벨", placeholder: "예: ITRC3년차" },
   { key: "fiscalYear", label: "회계연도", type: "number", placeholder: "예: 2018" },
-  { key: "budgetCash", label: "당해연구현금(예산)", type: "number", suffix: "원" },
+  { key: "budgetCash", label: "당해연구현금(예산)", type: "number", suffix: "원", money: true },
   { key: "startDate", label: "시작일", type: "date" },
   { key: "endDate", label: "종료일", type: "date" },
 ];

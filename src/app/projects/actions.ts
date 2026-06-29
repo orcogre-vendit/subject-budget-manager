@@ -33,7 +33,9 @@ function rawForm(fields: ProjectField[], fd: FormData): Record<string, string> {
     if (f.type === "checkbox") {
       r[f.key] = fd.get(f.key) === "on" ? "on" : "";
     } else {
-      r[f.key] = ((fd.get(f.key) as string | null) ?? "").trim();
+      let s = ((fd.get(f.key) as string | null) ?? "").trim();
+      if (f.type === "number") s = s.replace(/,/g, ""); // 금액 등 콤마 제거
+      r[f.key] = s;
     }
   }
   return r;

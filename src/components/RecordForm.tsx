@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import type { ProjectField } from "@/app/projects/fields";
 import type { FormState } from "@/app/projects/actions";
+import MoneyInput from "@/components/MoneyInput";
 
 type Action = (prev: FormState, formData: FormData) => Promise<FormState>;
 
@@ -55,6 +56,13 @@ function Field({
             </option>
           ))}
         </select>
+      ) : f.money ? (
+        <MoneyInput
+          name={f.key}
+          defaultValue={v}
+          placeholder={f.placeholder}
+          suffix={f.suffix}
+        />
       ) : (
         <div className="relative">
           <input

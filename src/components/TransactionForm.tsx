@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import type { FormState } from "@/app/projects/actions";
+import MoneyInput from "@/components/MoneyInput";
 
 export type BudgetTree = {
   id: number;
@@ -205,14 +206,7 @@ export default function TransactionForm({
           <label className="mb-1 block text-sm font-medium text-slate-700">
             금액(원)<span className="ml-0.5 text-red-500">*</span>
           </label>
-          <input
-            type="number"
-            name="amount"
-            min="0"
-            step="1"
-            defaultValue={v.amount ?? ""}
-            className={inputCls}
-          />
+          <MoneyInput name="amount" defaultValue={v.amount ?? ""} />
           {err("amount") && (
             <p className="mt-1 text-xs text-red-600">{err("amount")}</p>
           )}
