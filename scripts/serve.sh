@@ -9,13 +9,27 @@ command -v docker >/dev/null      || { echo "✗ docker 가 없습니다."; exit
 command -v cloudflared >/dev/null || { echo "✗ cloudflared 가 없습니다."; exit 1; }
 [ -f docker-compose.yml ]         || { echo "✗ 현재 위치에 docker-compose.yml 이 없습니다."; exit 1; }
 
+# docker 접근 권한: 그룹 미적용이면 sudo 로 폴백
+DOCKER="docker"
+if ! docker info >/dev/null 2>&1; then
+  echo "ℹ docker 그룹 미적용 — sudo 로 실행합니다 (재로그인하면 sudo 불필요)."
+  DOCKER="sudo docker"
+fi
+
 PORT="${PORT:-3000}"
+LOG=""
+CF_PID=""
+cleanup() {
+  if [ -n "$CF_PID" ]; then echo; echo "터널 종료 (컨테이너/데이터는 유지)"; kill "$CF_PID" 2>/dev/null; fi
+  [ -n "$LOG" ] && rm -f "$LOG"
+}
+trap cleanup EXIT
 
 echo "▶ 최신 이미지 pull..."
-docker compose pull
+$DOCKER compose pull
 
 echo "▶ 컨테이너 기동..."
-docker compose up -d
+$DOCKER compose up -d
 
 echo "▶ 앱 헬스 체크 (localhost:${PORT})..."
 for _ in $(seq 1 60); do
@@ -29,18 +43,15 @@ echo "▶ Cloudflare Tunnel 시작..."
 cloudflared tunnel --url "http://localhost:${PORT}" >"$LOG" 2>&1 &
 CF_PID=$!
 
-cleanup() { echo; echo "터널 종료 (컨테이너는 계속 실행 중)"; kill "$CF_PID" 2>/dev/null; rm -f "$LOG"; }
-trap cleanup INT TERM EXIT
-
 URL=""
 for _ in $(seq 1 30); do
-  URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" | head -1 || true)
+  [ -f "$LOG" ] && URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" | head -1 || true)
   [ -n "$URL" ] && break
-  kill -0 "$CF_PID" 2>/dev/null || { echo "✗ cloudflared 가 종료됨:"; cat "$LOG"; exit 1; }
+  kill -0 "$CF_PID" 2>/dev/null || { echo "✗ cloudflared 가 종료됨:"; cat "$LOG" 2>/dev/null; exit 1; }
   sleep 1
 done
 
-[ -n "$URL" ] || { echo "✗ 접속 URL 추출 실패:"; cat "$LOG"; exit 1; }
+[ -n "$URL" ] || { echo "✗ 접속 URL 추출 실패:"; cat "$LOG" 2>/dev/null; exit 1; }
 
 echo
 echo "=================================================="
