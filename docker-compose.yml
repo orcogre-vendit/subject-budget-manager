@@ -1,10 +1,8 @@
 # 개인 서버 self-host용. 이미지를 GHCR에서 받거나 로컬 빌드.
 services:
   app:
-    # 로컬 빌드: docker compose up --build
-    build: .
-    # GHCR 이미지 사용 시 build 대신 아래 주석 해제:
-    # image: ghcr.io/orcogre-vendit/subject-budget-manager:latest
+    image: ghcr.io/orcogre-vendit/subject-budget-manager:latest
+    # 로컬 소스로 직접 빌드하려면 위 image 줄을 지우고: build: .
     ports:
       - "3000:3000"
     environment:
