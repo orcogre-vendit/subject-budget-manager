@@ -133,6 +133,7 @@ export default async function ProjectDetailPage({
                 <th className="px-4 py-3 text-right font-medium">예산</th>
                 <th className="px-4 py-3 font-medium">기간</th>
                 <th className="px-4 py-3 text-center font-medium">집행건수</th>
+                <th className="px-4 py-3 text-center font-medium">집행 원장</th>
                 <th className="px-4 py-3 text-right font-medium">관리</th>
               </tr>
             </thead>
@@ -158,16 +159,18 @@ export default async function ProjectDetailPage({
                       : "-"}
                   </td>
                   <td className="px-4 py-3 text-center text-slate-500">
-                    {y._count.transactions}
+                    {y._count.transactions}건
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <Link
+                      href={`/projects/${project.id}/years/${y.id}/ledger`}
+                      className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
+                    >
+                      📒 집행 원장
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-3">
-                      <Link
-                        href={`/projects/${project.id}/years/${y.id}/ledger`}
-                        className="text-xs font-semibold text-slate-900 hover:underline"
-                      >
-                        원장
-                      </Link>
                       <Link
                         href={`/projects/${project.id}/years/${y.id}/edit`}
                         className="text-xs font-medium text-slate-600 hover:underline"
@@ -201,10 +204,6 @@ export default async function ProjectDetailPage({
           hidden={{ projectId: project.id }}
         />
       </details>
-
-      <p className="mt-4 text-xs text-slate-400">
-        ※ 집행 원장(거래 입력·비목별 잔액)은 다음 단계에서 연차별로 연결됩니다.
-      </p>
     </div>
   );
 }

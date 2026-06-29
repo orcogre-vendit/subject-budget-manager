@@ -7,7 +7,9 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage() {
   const projects = await prisma.project.findMany({
     orderBy: [{ active: "desc" }, { code: "desc" }, { id: "desc" }],
-    include: { years: { select: { budgetCash: true } } },
+    include: {
+      years: { select: { id: true, budgetCash: true }, orderBy: { yearNo: "asc" } },
+    },
   });
 
   return (
@@ -41,11 +43,16 @@ export default async function ProjectsPage() {
                 <th className="px-4 py-3 font-medium">연구기간</th>
                 <th className="px-4 py-3 text-center font-medium">연차</th>
                 <th className="px-4 py-3 text-right font-medium">총 편성예산</th>
+                <th className="px-4 py-3 text-center font-medium">집행</th>
               </tr>
             </thead>
             <tbody>
               {projects.map((p) => {
                 const total = p.years.reduce((s, y) => s + y.budgetCash, 0);
+                const ledgerHref =
+                  p.years.length === 1
+                    ? `/projects/${p.id}/years/${p.years[0].id}/ledger`
+                    : `/projects/${p.id}`;
                 return (
                   <tr
                     key={p.id}
@@ -83,6 +90,18 @@ export default async function ProjectsPage() {
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-slate-800">
                       {won(total)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {p.years.length > 0 ? (
+                        <Link
+                          href={ledgerHref}
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
+                        >
+                          📒 집행 원장
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-slate-400">연차 없음</span>
+                      )}
                     </td>
                   </tr>
                 );
