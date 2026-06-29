@@ -25,8 +25,8 @@ function parseTx(fd: FormData): Record<string, string> {
     amount: get("amount").replace(/,/g, ""), // 콤마 제거
     description: get("description"),
     budgetItemId: get("budgetItemId"),
-    budgetSubItemId: get("budgetSubItemId"),
-    budgetDetailItemId: get("budgetDetailItemId"),
+    budgetSubItemName: get("budgetSubItemName"),
+    budgetDetailItemName: get("budgetDetailItemName"),
   };
 }
 
@@ -42,31 +42,35 @@ function validateTx(raw: Record<string, string>): Record<string, string> {
   return e;
 }
 
-/** 세세목/세목이 선택되면 그 부모(세목·비목)를 역도출해 분류 일관성 보장 */
-async function deriveCategory(raw: Record<string, string>) {
-  let budgetItemId = raw.budgetItemId ? Number(raw.budgetItemId) : null;
-  let budgetSubItemId = raw.budgetSubItemId ? Number(raw.budgetSubItemId) : null;
-  let budgetDetailItemId = raw.budgetDetailItemId
-    ? Number(raw.budgetDetailItemId)
-    : null;
+/** 비목 아래로 세목·세세목을 이름으로 찾거나 새로 등록(find-or-create) */
+async function resolveCategory(raw: Record<string, string>) {
+  const budgetItemId = raw.budgetItemId ? Number(raw.budgetItemId) : null;
+  let budgetSubItemId: number | null = null;
+  let budgetDetailItemId: number | null = null;
 
-  if (budgetDetailItemId) {
-    const d = await prisma.budgetDetailItem.findUnique({
-      where: { id: budgetDetailItemId },
-      include: { budgetSubItem: true },
+  if (budgetItemId && raw.budgetSubItemName) {
+    const sub = await prisma.budgetSubItem.upsert({
+      where: {
+        budgetItemId_name: { budgetItemId, name: raw.budgetSubItemName },
+      },
+      update: {},
+      create: { budgetItemId, name: raw.budgetSubItemName },
     });
-    if (d) {
-      budgetSubItemId = d.budgetSubItemId;
-      budgetItemId = d.budgetSubItem.budgetItemId;
-    } else {
-      budgetDetailItemId = null;
+    budgetSubItemId = sub.id;
+
+    if (raw.budgetDetailItemName) {
+      const det = await prisma.budgetDetailItem.upsert({
+        where: {
+          budgetSubItemId_name: {
+            budgetSubItemId,
+            name: raw.budgetDetailItemName,
+          },
+        },
+        update: {},
+        create: { budgetSubItemId, name: raw.budgetDetailItemName },
+      });
+      budgetDetailItemId = det.id;
     }
-  } else if (budgetSubItemId) {
-    const s = await prisma.budgetSubItem.findUnique({
-      where: { id: budgetSubItemId },
-    });
-    if (s) budgetItemId = s.budgetItemId;
-    else budgetSubItemId = null;
   }
   return { budgetItemId, budgetSubItemId, budgetDetailItemId };
 }
@@ -83,7 +87,7 @@ export async function createTransaction(
   const fieldErrors = validateTx(raw);
   if (Object.keys(fieldErrors).length) return { fieldErrors, values: raw };
 
-  const cat = await deriveCategory(raw);
+  const cat = await resolveCategory(raw);
   await prisma.transaction.create({
     data: {
       projectYearId,
@@ -114,7 +118,7 @@ export async function updateTransaction(
   const fieldErrors = validateTx(raw);
   if (Object.keys(fieldErrors).length) return { fieldErrors, values: raw };
 
-  const cat = await deriveCategory(raw);
+  const cat = await resolveCategory(raw);
   await prisma.transaction.update({
     where: { id },
     data: {

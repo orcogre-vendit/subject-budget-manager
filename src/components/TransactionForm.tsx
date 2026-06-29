@@ -21,9 +21,10 @@ const inputCls =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900";
 
 /**
- * 비목→세목→세세목 연쇄 셀렉트. 내부 useState로 연동하되,
- * 액션 결과(성공:초기화 / 실패:입력복원)에 따라 부모가 key를 바꿔 리마운트시키므로
- * effect 없이 항상 올바른 초기값에서 시작한다.
+ * 비목(관리형 선택) + 세목·세세목(자유 입력 + 기존값 추천).
+ * 세목/세세목은 datalist로 기존 레코드를 추천하되 새 값도 입력 가능하며,
+ * 서버에서 해당 비목 아래로 자동 등록(find-or-create)된다.
+ * 액션 결과에 따라 부모가 key를 바꿔 리마운트하므로 effect 없이 초기화/복원된다.
  */
 function CategorySelects({
   budgetTree,
@@ -35,13 +36,17 @@ function CategorySelects({
   error?: string;
 }) {
   const [itemId, setItemId] = useState(initial.budgetItemId ?? "");
-  const [subId, setSubId] = useState(initial.budgetSubItemId ?? "");
-  const [detailId, setDetailId] = useState(initial.budgetDetailItemId ?? "");
+  const [subName, setSubName] = useState(initial.budgetSubItemName ?? "");
+  const [detailName, setDetailName] = useState(
+    initial.budgetDetailItemName ?? "",
+  );
 
-  const subOptions =
-    budgetTree.find((i) => String(i.id) === itemId)?.subItems ?? [];
-  const detailOptions =
-    subOptions.find((s) => String(s.id) === subId)?.detailItems ?? [];
+  const item = budgetTree.find((i) => String(i.id) === itemId);
+  const subSuggestions = item ? item.subItems.map((s) => s.name) : [];
+  const matchedSub = item?.subItems.find((s) => s.name === subName);
+  const detailSuggestions = matchedSub
+    ? matchedSub.detailItems.map((d) => d.name)
+    : [];
 
   return (
     <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -52,11 +57,7 @@ function CategorySelects({
         <select
           name="budgetItemId"
           value={itemId}
-          onChange={(e) => {
-            setItemId(e.target.value);
-            setSubId("");
-            setDetailId("");
-          }}
+          onChange={(e) => setItemId(e.target.value)}
           className={inputCls}
         >
           <option value="">선택</option>
@@ -71,45 +72,44 @@ function CategorySelects({
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">
-          세목
+          세목 <span className="text-xs font-normal text-slate-400">(입력/추천)</span>
         </label>
-        <select
-          name="budgetSubItemId"
-          value={subId}
+        <input
+          name="budgetSubItemName"
+          list="sub-suggest"
+          value={subName}
           disabled={!itemId}
-          onChange={(e) => {
-            setSubId(e.target.value);
-            setDetailId("");
-          }}
+          autoComplete="off"
+          onChange={(e) => setSubName(e.target.value)}
+          placeholder="예: 재료비"
           className={inputCls + " disabled:bg-slate-100"}
-        >
-          <option value="">선택</option>
-          {subOptions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
+        />
+        <datalist id="sub-suggest">
+          {subSuggestions.map((n) => (
+            <option key={n} value={n} />
           ))}
-        </select>
+        </datalist>
       </div>
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">
-          세세목
+          세세목 <span className="text-xs font-normal text-slate-400">(입력/추천)</span>
         </label>
-        <select
-          name="budgetDetailItemId"
-          value={detailId}
-          disabled={!subId || detailOptions.length === 0}
-          onChange={(e) => setDetailId(e.target.value)}
+        <input
+          name="budgetDetailItemName"
+          list="detail-suggest"
+          value={detailName}
+          disabled={!subName}
+          autoComplete="off"
+          onChange={(e) => setDetailName(e.target.value)}
+          placeholder="예: 프린트 토너"
           className={inputCls + " disabled:bg-slate-100"}
-        >
-          <option value="">선택</option>
-          {detailOptions.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
+        />
+        <datalist id="detail-suggest">
+          {detailSuggestions.map((n) => (
+            <option key={n} value={n} />
           ))}
-        </select>
+        </datalist>
       </div>
     </div>
   );
@@ -135,7 +135,7 @@ export default function TransactionForm({
   const err = (k: string) => state.fieldErrors?.[k];
 
   // 액션 결과가 바뀔 때마다 연쇄 셀렉트를 새 초기값으로 리마운트
-  const catKey = `${v.budgetItemId ?? ""}|${v.budgetSubItemId ?? ""}|${v.budgetDetailItemId ?? ""}`;
+  const catKey = `${v.budgetItemId ?? ""}|${v.budgetSubItemName ?? ""}|${v.budgetDetailItemName ?? ""}`;
 
   return (
     <form action={formAction} className="mt-4">

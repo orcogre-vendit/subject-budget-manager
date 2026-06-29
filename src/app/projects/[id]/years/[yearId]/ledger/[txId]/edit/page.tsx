@@ -28,7 +28,11 @@ export default async function EditTransactionPage({
   const [tx, budgetTree] = await Promise.all([
     prisma.transaction.findUnique({
       where: { id: transactionId },
-      include: { attachments: { orderBy: { uploadedAt: "desc" } } },
+      include: {
+        attachments: { orderBy: { uploadedAt: "desc" } },
+        budgetSubItem: true,
+        budgetDetailItem: true,
+      },
     }),
     prisma.budgetItem.findMany({
       orderBy: { sortOrder: "asc" },
@@ -52,10 +56,8 @@ export default async function EditTransactionPage({
     amount: String(tx.amount),
     description: tx.description ?? "",
     budgetItemId: tx.budgetItemId ? String(tx.budgetItemId) : "",
-    budgetSubItemId: tx.budgetSubItemId ? String(tx.budgetSubItemId) : "",
-    budgetDetailItemId: tx.budgetDetailItemId
-      ? String(tx.budgetDetailItemId)
-      : "",
+    budgetSubItemName: tx.budgetSubItem?.name ?? "",
+    budgetDetailItemName: tx.budgetDetailItem?.name ?? "",
   };
 
   return (

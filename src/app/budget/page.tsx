@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import AddBudgetForm from "@/components/AddBudgetForm";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,14 @@ export default async function BudgetPage() {
     <div className="mx-auto max-w-4xl">
       <h1 className="text-2xl font-bold text-slate-900">기준정보 — 예산 분류</h1>
       <p className="mt-1 text-sm text-slate-500">
-        비목(대분류) → 세목(중분류) → 세세목(소분류) 3단계 체계
+        비목(대분류) → 세목(중분류) → 세세목(소분류) 3단계 체계. 세목·세세목은
+        거래 입력 시 자유 입력하면 자동 등록·추천됩니다.
       </p>
+
+      <div className="mt-5 rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="mb-3 text-sm font-semibold text-slate-800">비목 추가</h2>
+        <AddBudgetForm />
+      </div>
 
       <div className="mt-6 space-y-4">
         {items.map((item) => (
