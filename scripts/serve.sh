@@ -38,20 +38,27 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
-LOG="$(mktemp)"
 echo "▶ Cloudflare Tunnel 시작..."
-cloudflared tunnel --url "http://localhost:${PORT}" >"$LOG" 2>&1 &
-CF_PID=$!
-
 URL=""
-for _ in $(seq 1 30); do
-  [ -f "$LOG" ] && URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" | head -1 || true)
+for attempt in 1 2 3; do
+  LOG="$(mktemp)"
+  cloudflared tunnel --url "http://localhost:${PORT}" >"$LOG" 2>&1 &
+  CF_PID=$!
+  for _ in $(seq 1 20); do
+    [ -f "$LOG" ] && URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" | head -1 || true)
+    [ -n "$URL" ] && break
+    kill -0 "$CF_PID" 2>/dev/null || break   # cloudflared 조기 종료 → 재시도
+    sleep 1
+  done
   [ -n "$URL" ] && break
-  kill -0 "$CF_PID" 2>/dev/null || { echo "✗ cloudflared 가 종료됨:"; cat "$LOG" 2>/dev/null; exit 1; }
-  sleep 1
+  echo "  ↻ 시도 ${attempt} 실패 (Cloudflare 일시 오류일 수 있음):"
+  tail -2 "$LOG" 2>/dev/null | sed 's/^/    /'
+  kill "$CF_PID" 2>/dev/null; wait "$CF_PID" 2>/dev/null
+  rm -f "$LOG"; LOG=""; CF_PID=""
+  [ "$attempt" != "3" ] && sleep 3
 done
 
-[ -n "$URL" ] || { echo "✗ 접속 URL 추출 실패:"; cat "$LOG" 2>/dev/null; exit 1; }
+[ -n "$URL" ] || { echo "✗ 터널 생성 실패(3회). 잠시 후 다시 실행해 보세요."; exit 1; }
 
 echo
 echo "=================================================="
