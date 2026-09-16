@@ -1,11 +1,15 @@
+// 증빙 첨부 다운로드 — URL: /api/attachments/26 또는 /api/attachments/26/02-검수사진-….jpg (뒤 조각은 저장 파일명용, 조회는 id 로만)
 import { readFile } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/uploads";
+import { contentDisposition, wantsDownload } from "@/lib/download";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> },
+  req: Request,
+  { params }: { params: Promise<{ id: string; name?: string[] }> },
 ) {
   const { id } = await params;
   const attId = Number(id);
@@ -21,13 +25,12 @@ export async function GET(
     return new Response("File missing", { status: 404 });
   }
 
-  // 한글 파일명 지원(RFC 5987), 이미지·PDF는 브라우저 미리보기(inline)
-  const encoded = encodeURIComponent(att.fileName);
+  // 이미지·PDF 는 기본 미리보기(inline), ?download=1 이면 저장. 파일명은 규칙 이름(연번-종류-거래처-비목.ext)
   return new Response(new Uint8Array(data), {
     headers: {
       "Content-Type": att.mimeType || "application/octet-stream",
-      "Content-Disposition": `inline; filename*=UTF-8''${encoded}`,
-      "Content-Length": String(att.size),
+      "Content-Disposition": contentDisposition(att.fileName, wantsDownload(req)),
+      "Content-Length": String(data.length),
       "Cache-Control": "private, max-age=0, must-revalidate",
     },
   });

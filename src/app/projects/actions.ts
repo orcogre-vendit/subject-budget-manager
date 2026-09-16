@@ -24,6 +24,7 @@ export type FormState = {
   fieldErrors?: Record<string, string>;
   error?: string;
   values?: Record<string, string>; // 검증 실패 시 입력값(문자열) 보존
+  nonce?: number; // 성공 시 갱신 — 클라이언트가 key 로 써서 폼(내부 상태 포함)을 완전히 초기화
 };
 
 /** FormData → 문자열 맵 (체크박스는 "on"|""). 입력값 보존/재표시용 */
