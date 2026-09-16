@@ -345,9 +345,10 @@ function TxFields({
             <>
               <EvidenceReqPanel subName={sub?.name} reqs={sub?.evidenceRequirements ?? []} attachedCodes={attachedCodes} />
               <EvidenceDropInput
-                suggestedCodes={(sub?.evidenceRequirements ?? []).map((r) => r.code)}
+                // 품의 시점엔 견적서만 올리면 되므로 견적서를 맨 앞에
+                suggestedCodes={["QUOTE", ...(sub?.evidenceRequirements ?? []).map((r) => r.code).filter((c) => c !== "QUOTE")]}
                 error={err("evidenceFile")}
-                hint="(선택 · 저장할 때 함께 업로드, 수정 화면에서도 추가 가능)"
+                hint="(품의 단계엔 견적서만 · 거래명세서·세금계산서·검수 사진은 구매 뒤 수정 화면에서)"
                 onCodesChange={setAttachedCodes}
                 naming={naming}
               />

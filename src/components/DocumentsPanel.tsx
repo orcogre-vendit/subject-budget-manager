@@ -116,7 +116,7 @@ export default function DocumentsPanel({
       )}
       {isOut && buttons.includes("PURCHASE_REQUEST") && (
         <p className="mt-2 text-xs text-slate-500">
-          ※ 품의서 텍스트를 flex 에 올려 결재받은 뒤, flex 에서 내려받은 결재 완료 PDF 를 증빙 <b>구매의뢰서(품의서)</b>로 첨부하세요. 지출결의 PDF 는 <b>내부결재문서</b>로.
+          ※ 품의서 텍스트를 flex 양식 칸에 붙여넣고 <b>견적서만</b> 첨부해 결재를 올리세요. 결재 완료 PDF 는 증빙 <b>구매의뢰서(품의서)</b>로, 지출결의 PDF 는 <b>내부결재문서</b>로 여기에 첨부합니다.
         </p>
       )}
       {isOut && buttons.includes("INSPECTION_CERT") && (

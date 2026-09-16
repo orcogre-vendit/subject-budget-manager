@@ -16,9 +16,11 @@ export function renderPurchaseRequest(c: DocContext): string {
   const itemLines = c.items.length
     ? c.items.map((it) => ` - ${it.name}${it.spec ? ` (${it.spec})` : ""} ${n(it.quantity)}개 × ${n(it.unitPrice)}원 = ${n(it.amount)}원`)
     : [` - ${c.itemSummary} ${n(c.supplyAmount)}원`];
-  const files = c.attachments.length
-    ? c.attachments.map((a) => ` - ${a.name}${a.code ? ` (${evidenceLabel(a.code)})` : ""}`)
-    : [" - (아직 첨부된 증빙 없음 — 견적서·거래명세서를 먼저 올리세요)"];
+  // 품의 시점에 flex 에 올리는 건 견적서뿐. 거래명세서·세금계산서·검수 사진은 구매 뒤 RCMS 증빙
+  const quotes = c.attachments.filter((a) => a.code === "QUOTE");
+  const files = quotes.length
+    ? quotes.map((a) => ` - ${a.name} (${evidenceLabel(a.code)})`)
+    : [" - 견적서 (아직 미첨부 — 견적서를 올린 뒤 품의서를 다시 생성하세요)"];
 
   return [
     "■ 제목",
@@ -52,7 +54,7 @@ export function renderPurchaseRequest(c: DocContext): string {
     " - RCMS 연구비 사용등록 후 거래명세서·세금계산서(또는 카드매출전표)·검수확인서를 증빙으로 첨부 예정",
     " - 본 품의는 flex 전자결재로 승인 (별도 인장·서명 생략)",
     "",
-    "■ 첨부파일 (flex 에 함께 올릴 파일)",
+    "■ 첨부파일 (flex 에는 견적서만)",
     ...files,
   ].join("\n");
 }
