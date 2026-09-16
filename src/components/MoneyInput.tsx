@@ -9,11 +9,16 @@ export default function MoneyInput({
   defaultValue = "",
   placeholder,
   suffix,
+  onValueChange,
+  readOnly,
 }: {
   name: string;
   defaultValue?: string;
   placeholder?: string;
   suffix?: string;
+  /** 입력 중 숫자(콤마 제거) 콜백 — 부가세 자동계산 등 */
+  onValueChange?: (digits: string) => void;
+  readOnly?: boolean;
 }) {
   const initial = String(defaultValue ?? "").replace(/\D/g, "");
   const cls =
@@ -29,11 +34,13 @@ export default function MoneyInput({
         inputMode="numeric"
         defaultValue={fmt(initial)}
         placeholder={placeholder}
+        readOnly={readOnly}
         onInput={(e) => {
           const digits = e.currentTarget.value.replace(/\D/g, "");
           e.currentTarget.value = fmt(digits);
+          onValueChange?.(digits);
         }}
-        className={cls}
+        className={cls + (readOnly ? " bg-slate-50 text-slate-600" : "")}
       />
       {suffix && (
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">

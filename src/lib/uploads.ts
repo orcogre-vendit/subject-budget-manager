@@ -7,12 +7,20 @@ export const UPLOAD_DIR =
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
-/** 증빙으로 허용하는 확장자 (영수증/계산서/사진/문서) */
+/** 증빙 허용 확장자 — RCMS 업로드 요건 (PNG, PDF, PPT/PPTX, DOC/DOCX, XLS/XLSX, HWP/HWPX, JPG, TIFF, GIF, BMP) */
 export const ALLOWED_EXT = new Set([
-  "pdf", "png", "jpg", "jpeg", "gif", "webp", "heic",
-  "xlsx", "xls", "docx", "doc", "ppt", "pptx",
-  "hwp", "hwpx", "txt", "csv", "zip",
+  "png", "pdf", "ppt", "pptx", "doc", "docx", "xls", "xlsx",
+  "hwp", "hwpx", "jpg", "jpeg", "tif", "tiff", "gif", "bmp",
 ]);
+
+/** 암호화(DRM)된 PDF 여부 — /Encrypt 사전이 있으면 RCMS 업로드 불가 */
+export function looksEncryptedPdf(buf: Buffer, fileName: string): boolean {
+  if (extOf(fileName) !== "pdf") return false;
+  // 암호화 사전은 보통 trailer 근처. 파일 끝 64KB + 앞 4KB 만 검사해 대용량 비용 회피
+  const tail = buf.subarray(Math.max(0, buf.length - 65536)).toString("latin1");
+  const head = buf.subarray(0, 4096).toString("latin1");
+  return /\/Encrypt\b/.test(tail) || /\/Encrypt\b/.test(head);
+}
 
 export function extOf(name: string): string {
   const i = name.lastIndexOf(".");
