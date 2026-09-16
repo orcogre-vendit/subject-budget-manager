@@ -142,6 +142,8 @@ export default function TransactionDetail({
         direction={tx.direction}
         hasVat={tx.vatAmount > 0}
         requiredCodes={requiredCodes}
+        photoCount={tx.attachments.filter((a) => a.evidenceCode === "INSPECTION_PHOTO").length}
+        hasInspectionDate={!!tx.inspectionDate}
         docs={docs}
         generate={generateDocument}
         remove={deleteDocument}

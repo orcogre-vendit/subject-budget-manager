@@ -24,6 +24,7 @@ import {
   renderExpenseReportVat,
 } from "@/lib/templates/expenseReport";
 import { renderPdfFile } from "@/lib/pdf/render";
+import { probeImage } from "@/lib/pdf/probe";
 import InspectionCert from "@/lib/pdf/InspectionCert";
 import PurchaseRequest from "@/lib/pdf/PurchaseRequest";
 
@@ -461,13 +462,21 @@ export async function generateDocument(fd: FormData): Promise<void> {
       break;
     }
     case "INSPECTION_CERT": {
-      // 검수 사진(INSPECTION_PHOTO 태그 첨부)을 붙임 페이지로 삽입
+      // 검수 사진(INSPECTION_PHOTO 태그 첨부)을 붙임 페이지로 삽입. 사진이 한 장도 없으면 발급하지 않는다 (화면에서도 버튼 비활성)
       const photos = await loadInspectionPhotos(tx);
-      const { relPath } = await renderPdfFile(
-        createElement(InspectionCert, { ctx: buildDocContext(tx, { photos }) }),
-        relDir,
-        `inspection-cert-${stamp}.pdf`,
-      );
+      if (!photos.length) return;
+      const fileName = `inspection-cert-${stamp}.pdf`;
+      let relPath: string;
+      try {
+        ({ relPath } = await renderPdfFile(createElement(InspectionCert, { ctx: buildDocContext(tx, { photos }) }), relDir, fileName));
+      } catch (e) {
+        // 깨졌거나 미지원(CMYK 등)인 이미지가 섞이면 한 장씩 검사해 그것만 "삽입 불가"로 두고 다시 만든다
+        console.error("[inspection-cert] 사진 삽입 실패, 개별 검사 후 재시도:", e instanceof Error ? e.message : e);
+        const checked = await Promise.all(
+          photos.map(async (p) => (p.data && (await probeImage(p.data)) ? p : { ...p, data: null })),
+        );
+        ({ relPath } = await renderPdfFile(createElement(InspectionCert, { ctx: buildDocContext(tx, { photos: checked }) }), relDir, fileName));
+      }
       await prisma.generatedDocument.create({ data: { ...base, format: "pdf", filePath: relPath } });
       break;
     }

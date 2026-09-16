@@ -31,6 +31,8 @@ export default function DocumentsPanel({
   direction,
   hasVat,
   requiredCodes,
+  photoCount = 0,
+  hasInspectionDate = true,
   docs,
   generate,
   remove,
@@ -41,6 +43,10 @@ export default function DocumentsPanel({
   direction: string;
   hasVat: boolean;
   requiredCodes: string[];
+  /** 검수 사진(INSPECTION_PHOTO) 첨부 수 — 0이면 검수확인서를 발급하지 않는다 */
+  photoCount?: number;
+  /** 검수일 입력 여부 — 없어도 발급은 되지만 경고 */
+  hasInspectionDate?: boolean;
   docs: GeneratedDoc[];
   generate: Action;
   remove: Action;
@@ -83,18 +89,26 @@ export default function DocumentsPanel({
         <p className="mt-2 text-sm text-slate-400">입금(예산 편성) 거래는 생성할 서류가 없습니다.</p>
       ) : (
         <div className="mt-3 flex flex-wrap gap-2">
-          {buttons.map((code) => (
-            <form key={code} action={generate}>
-              {hidden}
-              <input type="hidden" name="templateCode" value={code} />
-              <button
-                type="submit"
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
-              >
-                {LABELS[code]}
-              </button>
-            </form>
-          ))}
+          {buttons.map((code) => {
+            const blocked = code === "INSPECTION_CERT" && photoCount === 0;
+            return (
+              <form key={code} action={generate}>
+                {hidden}
+                <input type="hidden" name="templateCode" value={code} />
+                <button
+                  type="submit"
+                  disabled={blocked}
+                  title={blocked ? "검수 사진을 먼저 첨부해야 발급됩니다" : undefined}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
+                >
+                  {LABELS[code]}
+                  {code === "INSPECTION_CERT" && photoCount > 0 && (
+                    <span className="ml-1 text-xs text-slate-400">사진 {photoCount}장</span>
+                  )}
+                </button>
+              </form>
+            );
+          })}
         </div>
       )}
       {isOut && buttons.includes("PURCHASE_REQUEST") && (
@@ -103,9 +117,16 @@ export default function DocumentsPanel({
         </p>
       )}
       {isOut && buttons.includes("INSPECTION_CERT") && (
-        <p className="mt-2 text-xs text-slate-500">
-          ※ 검수확인서는 증빙에 <b>검수(납품·설치) 사진</b>으로 태깅한 JPG/PNG 를 붙임 페이지로 자동 삽입합니다. 사진을 먼저 올린 뒤 생성하세요.
-        </p>
+        photoCount === 0 ? (
+          <p className="mt-2 text-xs text-amber-700">
+            ⚠️ 검수확인서는 <b>검수(납품·설치) 사진</b>이 최소 1장 첨부돼야 발급됩니다. 아래 증빙에 사진(JPG/PNG)을 올리고 유형을 &quot;검수(납품·설치) 사진&quot;으로 고르세요.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">
+            ※ 검수확인서에 검수 사진 {photoCount}장이 붙임 페이지로 들어갑니다.
+            {!hasInspectionDate && <span className="ml-1 text-amber-700">검수일이 비어 있어 확인서에 &quot;-&quot;로 찍힙니다. 위 폼에서 검수일을 넣고 저장하세요.</span>}
+          </p>
+        )
       )}
       {isOut && hasVat && (
         <p className="mt-2 text-xs text-amber-700">
