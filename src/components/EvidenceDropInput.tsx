@@ -23,7 +23,7 @@ const NAME_RULES: [RegExp, string][] = [
   [/출장/i, "TRAVEL_REQUEST"],
   [/급여|payslip/i, "PAYSLIP"],
   [/이체.*(확인|증명)|transfer/i, "TRANSFER_PROOF"],
-  [/결재/i, "INTERNAL_APPROVAL"],
+  [/지출결의|지결|flex|결재/i, "INTERNAL_APPROVAL"], // flex 에서 내려받은 결재 문서
 ];
 const IMAGE_EXT = new Set(["jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff"]);
 

@@ -51,8 +51,8 @@ export default function DocumentsPanel({
   const isOut = direction === "OUT";
   const noReqs = requiredCodes.length === 0;
   const buttons: string[] = [];
-  if (isOut && (noReqs || requiredCodes.includes("PURCHASE_REQUEST")))
-    buttons.push("PURCHASE_REQUEST", "PURCHASE_REQUEST_PDF");
+  // 품의서는 flex 결재용 텍스트만 — 결재가 끝나면 flex 가 만든 PDF 를 받아 증빙으로 첨부한다 (자체 PDF 는 만들지 않음)
+  if (isOut && (noReqs || requiredCodes.includes("PURCHASE_REQUEST"))) buttons.push("PURCHASE_REQUEST");
   if (isOut && (noReqs || requiredCodes.includes("INSPECTION_CERT"))) buttons.push("INSPECTION_CERT");
   if (isOut) buttons.push("EXPENSE_REPORT");
   if (isOut && hasVat) buttons.push("EXPENSE_REPORT_VAT");
@@ -96,6 +96,11 @@ export default function DocumentsPanel({
             </form>
           ))}
         </div>
+      )}
+      {isOut && buttons.includes("PURCHASE_REQUEST") && (
+        <p className="mt-2 text-xs text-slate-500">
+          ※ 품의서 텍스트를 flex 에 올려 결재받은 뒤, flex 에서 내려받은 결재 완료 PDF 를 증빙 <b>구매의뢰서(품의서)</b>로 첨부하세요. 지출결의 PDF 는 <b>내부결재문서</b>로.
+        </p>
       )}
       {isOut && buttons.includes("INSPECTION_CERT") && (
         <p className="mt-2 text-xs text-slate-500">

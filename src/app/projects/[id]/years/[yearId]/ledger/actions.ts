@@ -338,7 +338,7 @@ export async function updateTransaction(
   await renameAttachmentsFor(id); // 거래처·비목 변경을 첨부 파일명에 반영
   revalidatePath(ledgerPath(projectId, projectYearId));
   revalidatePath(`/projects/${projectId}`);
-  redirect(ledgerPath(projectId, projectYearId));
+  redirect(`${ledgerPath(projectId, projectYearId)}?tx=${id}#detail`); // 원장으로 돌아가되 이 거래를 열어둔다
 }
 
 export async function deleteTransaction(fd: FormData): Promise<void> {
