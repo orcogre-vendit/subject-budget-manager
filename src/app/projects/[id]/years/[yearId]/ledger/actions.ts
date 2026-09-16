@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { prisma } from "@/lib/prisma";
 import type { FormState } from "@/app/projects/actions";
 import {
-  saveUpload,
+  saveUploadBuffer,
   deleteUpload,
   extOf,
   ALLOWED_EXT,
@@ -188,6 +188,37 @@ function txData(
 
 const itemRows = (items: ItemIn[]) => items.map((it, i) => ({ ...it, sortOrder: i }));
 
+// ---------- 증빙 파일 공통 ----------
+
+/** RCMS 업로드 요건 검증 — 통과하면 읽어둔 버퍼를 돌려준다 (저장 시 재사용) */
+async function checkEvidenceFile(file: File): Promise<{ buf: Buffer } | { error: string }> {
+  if (file.size > MAX_UPLOAD_BYTES) return { error: `'${file.name}' 은(는) 20MB 를 넘습니다.` };
+  if (!ALLOWED_EXT.has(extOf(file.name)))
+    return { error: `'${file.name}' 형식은 허용되지 않습니다. (PDF·이미지·오피스·HWP)` };
+  const buf = Buffer.from(await file.arrayBuffer());
+  if (looksEncryptedPdf(buf, file.name))
+    return { error: `'${file.name}' 은(는) 암호화(DRM)된 PDF 라 RCMS 에 올릴 수 없습니다. 암호를 해제한 파일을 올려주세요.` };
+  return { buf };
+}
+
+async function storeAttachment(transactionId: number, file: File, buf: Buffer, evidenceCode: string | null) {
+  const { storedName, size } = await saveUploadBuffer(buf, file.name);
+  await prisma.attachment.create({
+    data: { transactionId, fileName: file.name, storedName, mimeType: file.type || null, size, evidenceCode },
+  });
+}
+
+/** 거래 추가 폼의 증빙 줄 — evidenceCode[i] 와 evidenceFile[i] 는 같은 순서로 들어온다. 파일 없는 줄은 무시 */
+function pickEvidenceRows(fd: FormData): { file: File; code: string | null }[] {
+  const files = fd.getAll("evidenceFile");
+  const codes = fd.getAll("evidenceCode").map((c) => String(c ?? "").trim() || null);
+  const out: { file: File; code: string | null }[] = [];
+  files.forEach((f, i) => {
+    if (f instanceof File && f.size > 0 && f.name) out.push({ file: f, code: codes[i] ?? null });
+  });
+  return out;
+}
+
 // ---------- 거래 ----------
 
 export async function createTransaction(
@@ -202,17 +233,30 @@ export async function createTransaction(
   const parsed = parseItems(raw.items);
   const fieldErrors = validateTx(raw, parsed.items);
   if (parsed.error) fieldErrors.items = parsed.error;
+
+  // 함께 올린 증빙 — 거래를 만들기 전에 전부 검증해 반쪽 저장을 막는다
+  const evidence: { file: File; code: string | null; buf: Buffer }[] = [];
+  for (const row of pickEvidenceRows(fd)) {
+    const c = await checkEvidenceFile(row.file);
+    if ("error" in c) {
+      fieldErrors.evidenceFile = c.error;
+      break;
+    }
+    evidence.push({ ...row, buf: c.buf });
+  }
   if (Object.keys(fieldErrors).length) return { fieldErrors, values: raw };
 
   const cat = await resolveCategory(raw);
   const money = deriveMoney(raw, parsed.items);
-  await prisma.transaction.create({
+  const tx = await prisma.transaction.create({
     data: {
       projectYearId,
       ...txData(raw, cat, money),
       items: { create: itemRows(parsed.items) },
     },
   });
+  for (const e of evidence) await storeAttachment(tx.id, e.file, e.buf, e.code);
+
   revalidatePath(ledgerPath(projectId, projectYearId));
   revalidatePath(`/projects/${projectId}`);
   return { values: {} }; // 폼 초기화(연속 입력)
@@ -286,25 +330,10 @@ export async function uploadAttachment(
   const evidenceCode = ((fd.get("evidenceCode") as string | null) ?? "").trim() || null;
   if (!(file instanceof File) || file.size === 0)
     return { fieldErrors: { file: "파일을 선택하세요." } };
-  if (file.size > MAX_UPLOAD_BYTES)
-    return { fieldErrors: { file: "파일은 20MB 이하만 업로드할 수 있습니다." } };
-  if (!ALLOWED_EXT.has(extOf(file.name)))
-    return { fieldErrors: { file: "허용되지 않는 파일 형식입니다. (PDF·이미지·오피스·HWP)" } };
-  const buf = Buffer.from(await file.arrayBuffer());
-  if (looksEncryptedPdf(buf, file.name))
-    return { fieldErrors: { file: "암호화(DRM)된 PDF는 RCMS에 올릴 수 없습니다. 암호를 해제한 파일을 올려주세요." } };
+  const checked = await checkEvidenceFile(file);
+  if ("error" in checked) return { fieldErrors: { file: checked.error } };
 
-  const { storedName, size } = await saveUpload(file);
-  await prisma.attachment.create({
-    data: {
-      transactionId,
-      fileName: file.name,
-      storedName,
-      mimeType: file.type || null,
-      size,
-      evidenceCode,
-    },
-  });
+  await storeAttachment(transactionId, file, checked.buf, evidenceCode);
   revalidatePath(txEditPath(projectId, projectYearId, transactionId));
   revalidatePath(ledgerPath(projectId, projectYearId));
   return { values: {} };

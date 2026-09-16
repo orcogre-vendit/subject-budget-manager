@@ -31,16 +31,23 @@ export async function ensureUploadDir(): Promise<void> {
   await mkdir(UPLOAD_DIR, { recursive: true });
 }
 
+/** 이미 읽어둔 버퍼를 디스크에 저장하고 저장명·크기 반환 (확장자는 원본 파일명에서) */
+export async function saveUploadBuffer(
+  buf: Buffer,
+  originalName: string,
+): Promise<{ storedName: string; size: number }> {
+  await ensureUploadDir();
+  const ext = extOf(originalName);
+  const storedName = `${crypto.randomUUID()}${ext ? "." + ext : ""}`;
+  await writeFile(path.join(UPLOAD_DIR, storedName), buf);
+  return { storedName, size: buf.length };
+}
+
 /** File을 디스크에 저장하고 저장명·크기 반환 */
 export async function saveUpload(
   file: File,
 ): Promise<{ storedName: string; size: number }> {
-  await ensureUploadDir();
-  const buf = Buffer.from(await file.arrayBuffer());
-  const ext = extOf(file.name);
-  const storedName = `${crypto.randomUUID()}${ext ? "." + ext : ""}`;
-  await writeFile(path.join(UPLOAD_DIR, storedName), buf);
-  return { storedName, size: buf.length };
+  return saveUploadBuffer(Buffer.from(await file.arrayBuffer()), file.name);
 }
 
 export async function deleteUpload(storedName: string): Promise<void> {

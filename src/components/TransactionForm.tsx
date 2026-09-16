@@ -5,19 +5,23 @@ import Link from "next/link";
 import type { FormState } from "@/app/projects/actions";
 import MoneyInput from "@/components/MoneyInput";
 import ItemsEditor, { itemsTotal, type ItemRow } from "@/components/ItemsEditor";
+import EvidenceFilesInput from "@/components/EvidenceFilesInput";
 import { vatOf } from "@/lib/money";
 
 /** 설치장소 기본값 — 서버(context.ts)와 동일 문자열. context.ts 는 fs 를 import 하므로 클라이언트에서 가져오지 않는다 */
 const DEFAULT_INSTALL_LOCATION = "주식회사 벤디트 기업부설연구소내";
 
+export type BudgetSub = {
+  id: number;
+  name: string;
+  detailItems: { id: number; name: string }[];
+  evidenceRequirements?: { code: string; requirement: string }[];
+};
+
 export type BudgetTree = {
   id: number;
   name: string;
-  subItems: {
-    id: number;
-    name: string;
-    detailItems: { id: number; name: string }[];
-  }[];
+  subItems: BudgetSub[];
 }[];
 
 type Action = (prev: FormState, formData: FormData) => Promise<FormState>;
@@ -45,10 +49,13 @@ function CategorySelects({
   budgetTree,
   initial,
   error,
+  onSubChange,
 }: {
   budgetTree: BudgetTree;
   initial: Values;
   error?: string;
+  /** 세목이 기존 항목과 일치할 때 그 세목(증빙 요건 포함)을 알린다 */
+  onSubChange?: (sub: BudgetSub | undefined) => void;
 }) {
   const [itemId, setItemId] = useState(initial.budgetItemId ?? "");
   const [subName, setSubName] = useState(initial.budgetSubItemName ?? "");
@@ -59,11 +66,20 @@ function CategorySelects({
   const matchedSub = item?.subItems.find((s) => s.name === subName);
   const detailSuggestions = matchedSub ? matchedSub.detailItems.map((d) => d.name) : [];
 
+  const changeItem = (v: string) => {
+    setItemId(v);
+    onSubChange?.(budgetTree.find((i) => String(i.id) === v)?.subItems.find((s) => s.name === subName));
+  };
+  const changeSub = (v: string) => {
+    setSubName(v);
+    onSubChange?.(item?.subItems.find((s) => s.name === v));
+  };
+
   return (
     <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
       <div>
         <Label text="비목" required />
-        <select name="budgetItemId" value={itemId} onChange={(e) => setItemId(e.target.value)} className={inputCls}>
+        <select name="budgetItemId" value={itemId} onChange={(e) => changeItem(e.target.value)} className={inputCls}>
           <option value="">선택</option>
           {budgetTree.map((i) => (
             <option key={i.id} value={i.id}>{i.name}</option>
@@ -74,7 +90,7 @@ function CategorySelects({
       <div>
         <Label text="세목" hint="(입력/추천)" />
         <input name="budgetSubItemName" list="sub-suggest" value={subName} disabled={!itemId} autoComplete="off"
-          onChange={(e) => setSubName(e.target.value)} placeholder="예: 연구재료 구입비" className={inputCls + " disabled:bg-slate-100"} />
+          onChange={(e) => changeSub(e.target.value)} placeholder="예: 연구재료 구입비" className={inputCls + " disabled:bg-slate-100"} />
         <datalist id="sub-suggest">{subSuggestions.map((n) => <option key={n} value={n} />)}</datalist>
       </div>
       <div>
@@ -104,7 +120,17 @@ function parseInitialItems(json?: string): ItemRow[] {
 }
 
 /** 폼 본문 — 액션 결과마다 부모가 key 를 바꿔 리마운트하므로 상태가 항상 올바른 초기값에서 시작 */
-function TxFields({ v, fe, budgetTree }: { v: Values; fe?: Record<string, string>; budgetTree: BudgetTree }) {
+function TxFields({
+  v,
+  fe,
+  budgetTree,
+  withEvidence,
+}: {
+  v: Values;
+  fe?: Record<string, string>;
+  budgetTree: BudgetTree;
+  withEvidence?: boolean;
+}) {
   const err = (k: string) => fe?.[k];
   const initialItems = parseInitialItems(v.items);
 
@@ -112,6 +138,7 @@ function TxFields({ v, fe, budgetTree }: { v: Values; fe?: Record<string, string
   const [itemsTot, setItemsTot] = useState(() => itemsTotal(initialItems));
   const [manual, setManual] = useState(() => Number((v.amount ?? "").replace(/\D/g, "")) || 0);
   const [vatRate, setVatRate] = useState(v.vatRate ?? "10");
+  const [suggestedCodes, setSuggestedCodes] = useState<string[]>([]);
 
   const supply = itemsTot > 0 ? itemsTot : manual;
   const rate = Math.trunc(Number(vatRate) || 0);
@@ -156,7 +183,12 @@ function TxFields({ v, fe, budgetTree }: { v: Values; fe?: Record<string, string
         </div>
       </div>
 
-      <CategorySelects budgetTree={budgetTree} initial={v} error={err("budgetItemId")} />
+      <CategorySelects
+        budgetTree={budgetTree}
+        initial={v}
+        error={err("budgetItemId")}
+        onSubChange={(sub) => setSuggestedCodes((sub?.evidenceRequirements ?? []).map((r) => r.code))}
+      />
 
       {!isIn && (
         <>
@@ -208,6 +240,8 @@ function TxFields({ v, fe, budgetTree }: { v: Values; fe?: Record<string, string
             <textarea name="purpose" rows={2} defaultValue={v.purpose ?? ""}
               placeholder="예: 스마트 마스크 PoC 보드 제작을 위한 개발보드 및 센서 구매" className={inputCls} />
           </div>
+
+          {withEvidence && <EvidenceFilesInput suggestedCodes={suggestedCodes} error={err("evidenceFile")} />}
         </>
       )}
 
@@ -227,6 +261,7 @@ export default function TransactionForm({
   defaultValues = {},
   hidden = {},
   cancelHref,
+  withEvidence = false,
 }: {
   budgetTree: BudgetTree;
   action: Action;
@@ -234,6 +269,8 @@ export default function TransactionForm({
   defaultValues?: Values;
   hidden?: Record<string, string | number>;
   cancelHref?: string;
+  /** 거래 추가 폼: 증빙 파일을 함께 올리는 줄을 보여준다 (수정 화면은 별도 첨부 섹션 사용) */
+  withEvidence?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const v = state.values ?? defaultValues;
@@ -247,7 +284,7 @@ export default function TransactionForm({
         <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{state.error}</p>
       )}
 
-      <TxFields key={JSON.stringify(v)} v={v} fe={state.fieldErrors} budgetTree={budgetTree} />
+      <TxFields key={JSON.stringify(v)} v={v} fe={state.fieldErrors} budgetTree={budgetTree} withEvidence={withEvidence} />
 
       <div className="mt-5 flex items-center gap-3">
         <button type="submit" disabled={pending}

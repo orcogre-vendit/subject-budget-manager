@@ -39,7 +39,11 @@ export default async function LedgerPage({
       include: {
         subItems: {
           orderBy: { name: "asc" },
-          include: { detailItems: { orderBy: { name: "asc" } } },
+          include: {
+            detailItems: { orderBy: { name: "asc" } },
+            // 세목을 고르면 증빙 첨부 줄의 유형 목록에 그 세목 요건을 먼저 보여준다
+            evidenceRequirements: { select: { code: true, requirement: true }, orderBy: { sortOrder: "asc" } },
+          },
         },
       },
     }),
@@ -290,6 +294,7 @@ export default async function LedgerPage({
           action={createTransaction}
           submitLabel="거래 등록"
           hidden={hidden}
+          withEvidence
         />
       </div>
     </div>
