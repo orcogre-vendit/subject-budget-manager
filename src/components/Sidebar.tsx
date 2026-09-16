@@ -8,6 +8,7 @@ const NAV = [
   { href: "/projects", label: "과제 관리", icon: "📁" },
   { href: "/researchers", label: "연구원 관리", icon: "👥" },
   { href: "/budget", label: "기준정보(비목)", icon: "🏷️" },
+  { href: "/rcms", label: "RCMS 대조", icon: "🔁" },
 ];
 
 export default function Sidebar() {

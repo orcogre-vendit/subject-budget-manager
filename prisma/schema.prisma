@@ -110,6 +110,7 @@ model ProjectYear {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   transactions Transaction[]
+  rcmsRecords  RcmsRecord[]
 
   @@unique([projectId, yearNo])
 }
@@ -143,15 +144,69 @@ model Transaction {
   budgetSubItem      BudgetSubItem?    @relation(fields: [budgetSubItemId], references: [id])
   budgetDetailItemId Int?
   budgetDetailItem   BudgetDetailItem? @relation(fields: [budgetDetailItemId], references: [id])
+  plannedAmount      Int? // 품의 시점 공급가액 — RCMS 매칭으로 amount 가 실집행액으로 갱신될 때 보존
   attachments        Attachment[]
   items              TransactionItem[]
   documents          GeneratedDocument[]
+  rcmsRecord         RcmsRecord?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
   @@index([projectYearId])
   @@index([budgetItemId])
   @@index([date])
+}
+
+/// RCMS "연구비 이체 실행 대상 목록" 엑셀에서 가져온 사용등록 건 — 실행된 집행의 원본(source of truth).
+/// RCMS 는 고유 ID 를 내보내지 않으므로 key 는 (과제번호·등록일시·사용일자·사용금액·거래처·품목) 해시.
+model RcmsRecord {
+  id            Int          @id @default(autoincrement())
+  key           String       @unique
+  projectYearId Int
+  projectYear   ProjectYear  @relation(fields: [projectYearId], references: [id], onDelete: Cascade)
+  transactionId Int?         @unique // 매칭된 품의(우리 장부 거래)
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  matchMethod   String? // auto | manual | created
+  rcmsProjectNo String // 과제번호
+  stage         String? // 단계
+  yearNo        Int? // 연차
+  registeredAt  DateTime? // 등록일시
+  useDate       DateTime? // 사용일자
+  progress      String? // 진행상태 (임시저장/등록 …)
+  execStatus    String? // 집행상태
+  evidenceType  String? // 증빙구분 (연구비전용카드/전자세금계산서 …)
+  budgetPath    String? // 비목정보 "직접비>연구재료비>연구재료 구입비"
+  useAmount     Int          @default(0) // 사용금액(총액)
+  supplyAmount  Int          @default(0) // 공급금액
+  vatAmount     Int          @default(0) // 부가세액
+  vendor        String? // 거래처명
+  vendorBizNo   String? // 거래처 사업자등록번호
+  bank          String? // 입금은행
+  account       String? // 입금계좌번호
+  holder        String? // 예금주명
+  purpose       String? // 지급용도
+  regType       String? // 등록구분 (증빙우선/비목우선)
+  execStage     String? // 집행단계
+  itemName      String? // 품목명
+  raw           String // 원본 행 JSON (헤더→값)
+  firstSeenAt   DateTime     @default(now())
+  lastSeenAt    DateTime     @default(now())
+  missingSince  DateTime? // 최근 가져오기 목록에서 사라진 시점 → 이체 실행 완료로 추정
+
+  @@index([projectYearId])
+}
+
+/// RCMS 엑셀 가져오기 이력
+model RcmsImport {
+  id           Int      @id @default(autoincrement())
+  fileName     String
+  rowCount     Int
+  newCount     Int
+  updatedCount Int
+  missingCount Int
+  matchedCount Int      @default(0)
+  skipped      String? // 매핑 실패 사유 요약 JSON
+  importedAt   DateTime @default(now())
 }
 
 /// 증빙 첨부 — Access 첨부필드 대체, 파일은 디스크에 저장

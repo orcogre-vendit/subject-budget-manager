@@ -31,6 +31,7 @@ export default async function LedgerPage({
         budgetSubItem: { select: { name: true } },
         budgetDetailItem: { select: { name: true } },
         _count: { select: { attachments: true } },
+        rcmsRecord: { select: { id: true, progress: true, missingSince: true } },
       },
     }),
     prisma.budgetItem.findMany({
@@ -84,6 +85,14 @@ export default async function LedgerPage({
           </span>
         ) : null}
       </h1>
+      {year.ledgerType === "PROJECT" && (
+        <p className="mt-1 text-sm">
+          <Link href={`/rcms/${projectYearId}`} className="text-slate-500 underline hover:text-slate-800">
+            🔁 RCMS 대조표
+          </Link>
+          <span className="ml-2 text-xs text-slate-400">출금은 품의로 입력하고, 실집행액은 RCMS 엑셀 가져오기로 반영됩니다.</span>
+        </p>
+      )}
 
       {/* 요약 카드 */}
       <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -211,6 +220,20 @@ export default async function LedgerPage({
                       >
                         {t.status}
                       </span>
+                      {t.rcmsRecord && (
+                        <span
+                          className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            t.rcmsRecord.missingSince
+                              ? "bg-green-100 text-green-700"
+                              : t.rcmsRecord.progress === "임시저장"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-blue-100 text-blue-700"
+                          }`}
+                          title="RCMS 사용등록 건과 연결됨"
+                        >
+                          RCMS {t.rcmsRecord.missingSince ? "이체완료" : t.rcmsRecord.progress ?? "등록"}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-slate-600">
                       {cat || "-"}
