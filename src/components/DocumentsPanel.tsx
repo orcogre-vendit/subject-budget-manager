@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 
+import { downloadHref } from "@/lib/download";
+
 export type GeneratedDoc = {
   id: number;
   templateCode: string;
   format: string; // text | pdf
   content: string | null;
   createdAt: string; // YYYY-MM-DD HH:mm
+  fileName: string; // PDF 저장 이름 (연번-서류-거래처-비목.pdf)
 };
 
 const LABELS: Record<string, string> = {
@@ -150,14 +153,23 @@ export default function DocumentsPanel({
                 <p className="text-xs text-slate-400">{d.createdAt}</p>
               </div>
               {d.format === "pdf" ? (
-                <a
-                  href={`/api/documents/${d.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-medium text-slate-700 hover:underline"
-                >
-                  다운로드
-                </a>
+                <span className="flex items-center gap-2">
+                  <a
+                    href={downloadHref(`/api/documents/${d.id}`, d.fileName)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-slate-700 hover:underline"
+                  >
+                    보기
+                  </a>
+                  <a
+                    href={downloadHref(`/api/documents/${d.id}`, d.fileName, true)}
+                    download={d.fileName}
+                    className="text-xs font-medium text-slate-700 hover:underline"
+                  >
+                    다운로드
+                  </a>
+                </span>
               ) : (
                 <button
                   type="button"

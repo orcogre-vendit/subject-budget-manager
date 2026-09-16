@@ -1,63 +1,58 @@
-// 품의서(구매의뢰서 겸용) — flex 복붙용 텍스트
+// 품의서 — flex 워크플로우 "__년 _월 _________ 품의서" 양식의 칸 순서대로 붙여넣기용 텍스트.
+// flex 양식 칸: 제목 / 목적 / 은행 / 계좌번호 / 지급액 / 예금주명 / 지급일자 / 비고 / 첨부파일(20MB 이하, 최대 30개)
+import { evidenceLabel } from "@/lib/evidence";
 import { n, type DocContext } from "./types";
 
-/** 한글/전각 문자는 2칸으로 계산하는 표시 폭 */
-function dispWidth(s: string): number {
-  let w = 0;
-  for (const ch of s) w += ch.charCodeAt(0) > 0x2e7f ? 2 : 1;
-  return w;
-}
-const padR = (s: string, w: number) => s + " ".repeat(Math.max(0, w - dispWidth(s)));
-const padL = (s: string, w: number) => " ".repeat(Math.max(0, w - dispWidth(s))) + s;
-const cut = (s: string, w: number) => {
-  let out = "";
-  for (const ch of s) {
-    if (dispWidth(out + ch) > w) break;
-    out += ch;
-  }
-  return out;
-};
+const dash = (s: string) => (s && s !== "-" ? s : "-");
 
-const W = { name: 16, spec: 10, qty: 6, unit: 12, amt: 12 } as const;
+/** 제목: "(영수 년도)년 (영수 해당월)월 (목적) (용도) 품의서" → 예: "26년 9월 연구재료 구입비 BLE 개발보드 외 1건 품의서" */
+export function purchaseRequestTitle(c: DocContext): string {
+  const purpose = c.subItemName !== "-" ? c.subItemName : c.budgetPath.split(">").pop()?.trim() ?? "연구비";
+  return `${c.yy}년 ${c.m}월 ${purpose} ${c.itemSummary} 품의서`;
+}
 
 export function renderPurchaseRequest(c: DocContext): string {
-  const line = (l: string, m: string, r: string) =>
-    `${l}${"─".repeat(W.name)}${m}${"─".repeat(W.spec)}${m}${"─".repeat(W.qty)}${m}${"─".repeat(W.unit)}${m}${"─".repeat(W.amt)}${r}`;
-  const row = (a: string, b: string, cq: string, d: string, e: string) =>
-    `│${padR(cut(a, W.name), W.name)}│${padR(cut(b, W.spec), W.spec)}│${padL(cq, W.qty)}│${padL(d, W.unit)}│${padL(e, W.amt)}│`;
-
-  const rows = c.items.length
-    ? c.items.map((it) => row(it.name, it.spec || "-", String(it.quantity), n(it.unitPrice), n(it.amount)))
-    : [row(c.itemSummary || "-", "-", "1", n(c.supplyAmount), n(c.supplyAmount))];
+  const isCard = c.paymentMethod.includes("카드");
+  const itemLines = c.items.length
+    ? c.items.map((it) => ` - ${it.name}${it.spec ? ` (${it.spec})` : ""} ${n(it.quantity)}개 × ${n(it.unitPrice)}원 = ${n(it.amount)}원`)
+    : [` - ${c.itemSummary} ${n(c.supplyAmount)}원`];
+  const files = c.attachments.length
+    ? c.attachments.map((a) => ` - ${a.name}${a.code ? ` (${evidenceLabel(a.code)})` : ""}`)
+    : [" - (아직 첨부된 증빙 없음 — 견적서·거래명세서를 먼저 올리세요)"];
 
   return [
-    "구 매 의 뢰 서 (품의서)",
+    "■ 제목",
+    purchaseRequestTitle(c),
     "",
-    "1. 과제정보",
-    ` - 과제번호 : ${c.project.code}`,
-    ` - 과 제 명 : ${c.project.name}`,
-    ` - 비    목 : ${c.budgetPath}`,
+    "■ 목적",
+    c.purpose,
+    ` - 과제: ${c.project.code} ${c.project.name}`,
+    ` - 비목: ${c.budgetPath}`,
+    " - 품목:",
+    ...itemLines,
+    ` - 공급가액 ${n(c.supplyAmount)}원 + 부가세 ${n(c.vatAmount)}원 = 총액 ${n(c.totalAmount)}원 (부가세는 회사 자금, 연구비 계상 불가)`,
     "",
-    "2. 구매 내역",
-    " " + line("┌", "┬", "┐"),
-    " " + row("품목명", "규격", "수량", "단가(원)", "금액(원)"),
-    " " + line("├", "┼", "┤"),
-    ...rows.map((r) => " " + r),
-    " " + line("└", "┴", "┘"),
-    `                              공급가액 합계  ${n(c.supplyAmount)}원`,
-    `                              부가가치세     ${n(c.vatAmount)}원   ※ 회사 자금, 연구비 계상 불가`,
-    `                              총액           ${n(c.totalAmount)}원`,
+    "■ 은행",
+    isCard ? "- (연구비카드 결제)" : dash(c.vendorBank),
     "",
-    "3. 구매 사유 (과제와의 직접적 관련성)",
-    ` ${c.purpose}`,
+    "■ 계좌번호",
+    isCard ? "- (연구비카드 결제)" : dash(c.vendorAccount),
     "",
-    `4. 구매처 : ${c.vendor}`,
-    `5. 결제수단 : ${c.paymentMethod}   ※ 연구비카드 / RCMS 계좌이체`,
-    `6. 구매(예정)일 : ${c.purchaseDate}`,
+    "■ 지급액",
+    `${n(c.totalAmount)}`,
     "",
-    "※ 본 품의는 flex 전자결재로 승인 (별도 인장·서명 생략)",
+    "■ 예금주명",
+    isCard ? "- (연구비카드 결제)" : dash(c.vendorHolder),
     "",
-    `                        ${c.today}`,
-    `                        요청자 : ${c.requester}`,
+    "■ 지급일자",
+    dash(c.paymentDueDate),
+    "",
+    "■ 비고",
+    ` - 거래처: ${c.vendor} · 결제수단: ${c.paymentMethod} · 구매(예정)일: ${c.purchaseDate}`,
+    " - RCMS 연구비 사용등록 후 거래명세서·세금계산서(또는 카드매출전표)·검수확인서를 증빙으로 첨부 예정",
+    " - 본 품의는 flex 전자결재로 승인 (별도 인장·서명 생략)",
+    "",
+    "■ 첨부파일 (flex 에 함께 올릴 파일)",
+    ...files,
   ].join("\n");
 }

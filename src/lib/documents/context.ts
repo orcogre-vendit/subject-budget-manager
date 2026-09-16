@@ -20,9 +20,8 @@ export const docInclude = {
   budgetDetailItem: { select: { name: true } },
   items: { orderBy: { sortOrder: "asc" as const } },
   attachments: {
-    where: { evidenceCode: INSPECTION_PHOTO_CODE },
     orderBy: { uploadedAt: "asc" as const },
-    select: { fileName: true, storedName: true },
+    select: { fileName: true, storedName: true, evidenceCode: true },
   },
 } satisfies Prisma.TransactionInclude;
 
@@ -45,8 +44,9 @@ export function summarizeItems(items: { name: string }[], fallback?: string | nu
  * JPEG 는 부가 세그먼트를 걷어내고(아이폰 사진 대응), 파서를 미리 돌려 못 넣는 파일은 data:null(파일명만 표기)로 둔다.
  */
 export async function loadInspectionPhotos(tx: TxForDoc): Promise<DocPhoto[]> {
+  const photos = tx.attachments.filter((a) => a.evidenceCode === INSPECTION_PHOTO_CODE);
   return Promise.all(
-    tx.attachments.map(async (a): Promise<DocPhoto> => {
+    photos.map(async (a): Promise<DocPhoto> => {
       const ext = extOf(a.storedName);
       if (!PDF_IMAGE_EXT.has(ext)) return { caption: a.fileName, data: null };
       try {
@@ -110,5 +110,6 @@ export function buildDocContext(tx: TxForDoc, opts: { photos?: DocPhoto[]; now?:
     evidenceLookup: isCard ? "카드 사용내역 조회 → 해당 승인건 선택" : "세금계산서 조회 → 해당 건 선택",
 
     photos: opts.photos ?? [],
+    attachments: tx.attachments.map((a) => ({ name: a.fileName, code: a.evidenceCode })),
   };
 }

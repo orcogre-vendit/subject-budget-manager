@@ -5,6 +5,8 @@ import { ymd, won } from "@/lib/format";
 import { humanSize } from "@/lib/uploads";
 import { evaluateEvidence, evidenceLabel } from "@/lib/evidence";
 import { DEFAULT_INSTALL_LOCATION } from "@/lib/documents/context";
+import { documentFileName, DOC_FILE_LABELS } from "@/lib/evidenceName";
+import { downloadHref } from "@/lib/download";
 import TransactionForm, { type BudgetTree } from "@/components/TransactionForm";
 import AttachmentUpload from "@/components/AttachmentUpload";
 import DocumentsPanel from "@/components/DocumentsPanel";
@@ -106,12 +108,14 @@ export default function TransactionDetail({
   );
   const requiredCodes = reqs.filter((r) => r.requirement !== "optional").map((r) => r.code);
 
+  const naming = { seqNo: tx.seqNo, vendor: tx.vendor, budgetItem: tx.budgetItem?.name ?? null };
   const docs = tx.documents.map((g) => ({
     id: g.id,
     templateCode: g.templateCode,
     format: g.format,
     content: g.content,
     createdAt: `${ymd(g.createdAt)} ${g.createdAt.toTimeString().slice(0, 5)}`,
+    fileName: documentFileName(naming, DOC_FILE_LABELS[g.templateCode] ?? g.templateCode),
   }));
 
   return (
@@ -184,18 +188,20 @@ export default function TransactionDetail({
           <ul className="mt-3 divide-y divide-slate-100">
             {tx.attachments.map((a) => {
               const isImage = (a.mimeType ?? "").startsWith("image/");
+              const viewHref = downloadHref(`/api/attachments/${a.id}`, a.fileName);
+              const saveHref = downloadHref(`/api/attachments/${a.id}`, a.fileName, true);
               return (
                 <li key={a.id} className="flex items-center gap-3 py-2.5">
-                  <a href={`/api/attachments/${a.id}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                  <a href={viewHref} target="_blank" rel="noopener noreferrer" className="shrink-0">
                     {isImage ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={`/api/attachments/${a.id}`} alt={a.fileName} className="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-200" />
+                      <img src={viewHref} alt={a.fileName} className="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-200" />
                     ) : (
                       <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-xl">📄</span>
                     )}
                   </a>
                   <div className="min-w-0 flex-1">
-                    <a href={`/api/attachments/${a.id}`} target="_blank" rel="noopener noreferrer"
+                    <a href={viewHref} target="_blank" rel="noopener noreferrer"
                       className="block truncate text-sm font-medium text-slate-800 hover:underline">
                       {a.fileName}
                     </a>
@@ -209,6 +215,9 @@ export default function TransactionDetail({
                       )}
                     </p>
                   </div>
+                  <a href={saveHref} download={a.fileName} className="text-xs font-medium text-slate-600 hover:underline">
+                    다운로드
+                  </a>
                   <DeleteButton
                     action={deleteAttachment}
                     id={a.id}
