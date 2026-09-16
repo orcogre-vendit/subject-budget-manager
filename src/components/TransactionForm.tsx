@@ -105,13 +105,14 @@ function CategorySelects({
       </div>
       <div>
         <Label text="세목" hint="(입력/추천)" />
-        <input name="budgetSubItemName" list="sub-suggest" value={subName} disabled={!itemId} autoComplete="off"
+        {/* 비제어 입력: 제어 입력은 한글 IME 조합 중 리렌더와 겹치면 글자가 중복될 수 있다 */}
+        <input name="budgetSubItemName" list="sub-suggest" defaultValue={subName} disabled={!itemId} autoComplete="off"
           onChange={(e) => changeSub(e.target.value)} placeholder="예: 연구재료 구입비" className={inputCls + " disabled:bg-slate-100"} />
         <datalist id="sub-suggest">{subSuggestions.map((n) => <option key={n} value={n} />)}</datalist>
       </div>
       <div>
         <Label text="세세목" hint="(입력/추천)" />
-        <input name="budgetDetailItemName" list="detail-suggest" value={detailName} disabled={!subName} autoComplete="off"
+        <input name="budgetDetailItemName" list="detail-suggest" defaultValue={detailName} disabled={!subName} autoComplete="off"
           onChange={(e) => setDetailName(e.target.value)} placeholder="예: 전문가활용비" className={inputCls + " disabled:bg-slate-100"} />
         <datalist id="detail-suggest">{detailSuggestions.map((n) => <option key={n} value={n} />)}</datalist>
       </div>
@@ -313,7 +314,7 @@ function TxFields({
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
               <Label text="거래처" />
-              <input name="vendor" value={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="예: (주)디바이스마트" className={inputCls} />
+              <input name="vendor" defaultValue={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="예: (주)디바이스마트" className={inputCls} />
             </div>
             <div><Label text="은행명" /><input name="vendorBank" defaultValue={v.vendorBank ?? ""} className={inputCls} /></div>
             <div><Label text="계좌번호" /><input name="vendorAccount" defaultValue={v.vendorAccount ?? ""} className={inputCls} /></div>
