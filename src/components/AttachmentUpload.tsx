@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import type { FormState } from "@/app/projects/actions";
 import EvidenceDropInput from "@/components/EvidenceDropInput";
+import type { NamingContext } from "@/lib/evidenceName";
 
 type Action = (prev: FormState, formData: FormData) => Promise<FormState>;
 
@@ -14,10 +15,12 @@ export default function AttachmentUpload({
   action,
   hidden,
   suggestedCodes = [],
+  naming,
 }: {
   action: Action;
   hidden: Record<string, string | number>;
   suggestedCodes?: string[];
+  naming?: NamingContext & { taken?: string[] };
 }) {
   const [state, formAction, pending] = useActionState(action, {});
 
@@ -31,6 +34,7 @@ export default function AttachmentUpload({
         error={state.fieldErrors?.file}
         title="증빙 추가"
         hint="(파일을 올린 뒤 유형을 고르고 업로드)"
+        naming={naming}
       />
       {state.error && <p className="mt-1.5 text-xs text-red-600">{state.error}</p>}
       <div className="mt-2 flex justify-end">

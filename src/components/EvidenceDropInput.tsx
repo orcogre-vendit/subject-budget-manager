@@ -3,6 +3,7 @@
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { EVIDENCE_CODES } from "@/lib/evidence";
 import { ALLOWED_EXT, MAX_UPLOAD_BYTES, extOf, normalizeFileName } from "@/lib/uploadRules";
+import { pickEvidenceFileName, type NamingContext } from "@/lib/evidenceName";
 
 /** name 은 정규화된 표시용 파일명(서버도 같은 규칙으로 저장). file 은 원본 File */
 type Picked = { id: number; file: File; name: string; code: string; problem: string | null };
@@ -54,6 +55,7 @@ export default function EvidenceDropInput({
   title = "증빙 첨부",
   hint,
   onCodesChange,
+  naming,
 }: {
   suggestedCodes?: string[];
   error?: string;
@@ -61,6 +63,8 @@ export default function EvidenceDropInput({
   hint?: string;
   /** 제출될 증빙 코드가 바뀔 때마다 알림 (요건 충족 표시용) */
   onCodesChange?: (codes: string[]) => void;
+  /** 저장 시 붙을 파일명 미리보기 문맥. taken 은 이미 있는 첨부 이름(중복 번호 계산용) */
+  naming?: NamingContext & { taken?: string[] };
 }) {
   const [picked, setPicked] = useState<Picked[]>([]);
   const [over, setOver] = useState(false);
@@ -104,6 +108,13 @@ export default function EvidenceDropInput({
   };
   const openBrowse = () => browseRef.current?.click();
 
+  // 서버와 같은 규칙으로 저장 이름을 미리 계산 (같은 종류가 여럿이면 -2, -3 …)
+  const previews = new Map<number, string>();
+  if (naming) {
+    const taken = new Set(naming.taken ?? []);
+    for (const p of picked) if (!p.problem) previews.set(p.id, pickEvidenceFileName(naming, p.code || null, p.name, taken));
+  }
+
   return (
     <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
       <p className="text-sm font-medium text-slate-700">
@@ -139,6 +150,11 @@ export default function EvidenceDropInput({
                 <p className="text-xs text-slate-400">
                   {human(p.file.size)}
                   {p.problem && <span className="ml-2 font-medium text-red-600">{p.problem} · 업로드에서 제외</span>}
+                  {previews.has(p.id) && (
+                    <span className="ml-2 text-slate-500">
+                      저장 이름 <b className="font-medium text-slate-700">{previews.get(p.id)}</b>
+                    </span>
+                  )}
                 </p>
               </div>
               {!p.problem && (

@@ -6,6 +6,7 @@ import type { FormState } from "@/app/projects/actions";
 import { parseRcmsExport, parseRcmsBudgetPath, type RcmsRow } from "@/lib/rcms/parse";
 import { autoMatch } from "@/lib/rcms/match";
 import { txInclude } from "@/lib/rcms/db";
+import { nextSeqNo } from "@/lib/seq";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -263,6 +264,7 @@ export async function createTransactionFromRecord(fd: FormData): Promise<void> {
   const tx = await prisma.transaction.create({
     data: {
       projectYearId: rec.projectYearId,
+      seqNo: await nextSeqNo(rec.projectYearId),
       date: rec.useDate ?? rec.registeredAt ?? new Date(),
       status: rec.progress === "임시저장" ? "신청" : "완료",
       direction: "OUT",

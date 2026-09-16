@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { won, ymd, executionRate } from "@/lib/format";
+import { seqLabel } from "@/lib/evidenceName";
 import TransactionForm, { type BudgetTree } from "@/components/TransactionForm";
 import DeleteButton from "@/components/DeleteButton";
 import { createTransaction, deleteTransaction } from "./actions";
@@ -73,6 +74,8 @@ export default async function LedgerPage({
   }
   const balance = totalIn - totalOut;
   const rate = executionRate(totalOut, year.budgetCash);
+  // 다음 거래가 받을 연번 — 첨부 파일명 미리보기("03-거래명세서-…")용. 실제 부여는 서버가 저장 시점에 다시 계산
+  const nextSeqNo = transactions.reduce((m, t) => Math.max(m, t.seqNo ?? 0), 0) + 1;
 
   const hidden = { projectId, projectYearId };
 
@@ -187,6 +190,7 @@ export default async function LedgerPage({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
+                <th className="px-3 py-2.5 font-medium">No</th>
                 <th className="px-3 py-2.5 font-medium">날짜</th>
                 <th className="px-3 py-2.5 font-medium">상태</th>
                 <th className="px-3 py-2.5 font-medium">분류</th>
@@ -212,6 +216,9 @@ export default async function LedgerPage({
                     key={t.id}
                     className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
                   >
+                    <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-500">
+                      {seqLabel(t.seqNo)}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">
                       {ymd(t.date)}
                     </td>
@@ -298,6 +305,7 @@ export default async function LedgerPage({
           submitLabel="거래 등록"
           hidden={hidden}
           withEvidence
+          nextSeqNo={nextSeqNo}
         />
       </div>
     </div>

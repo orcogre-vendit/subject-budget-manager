@@ -3,6 +3,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/uploads";
+import { documentFileName } from "@/lib/evidenceName";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,10 @@ export async function GET(
   const docId = Number(id);
   if (!docId) return new Response("Bad request", { status: 400 });
 
-  const doc = await prisma.generatedDocument.findUnique({ where: { id: docId } });
+  const doc = await prisma.generatedDocument.findUnique({
+    where: { id: docId },
+    include: { transaction: { select: { seqNo: true, vendor: true, budgetItem: { select: { name: true } } } } },
+  });
   if (!doc || doc.format !== "pdf" || !doc.filePath)
     return new Response("Not found", { status: 404 });
 
@@ -37,8 +41,14 @@ export async function GET(
     return new Response("File missing", { status: 404 });
   }
 
+  // 거래 서류는 첨부와 같은 규칙 "연번-서류-거래처-비목.pdf", 연차 서류(대비표)는 기존 이름
   const base = FILE_NAMES[doc.templateCode] ?? doc.templateCode;
-  const filename = encodeURIComponent(`${base}_${doc.transactionId ?? doc.projectYearId ?? doc.id}.pdf`);
+  const t = doc.transaction;
+  const filename = encodeURIComponent(
+    t
+      ? documentFileName({ seqNo: t.seqNo, vendor: t.vendor, budgetItem: t.budgetItem?.name ?? null }, base)
+      : `${base}_${doc.projectYearId ?? doc.id}.pdf`,
+  );
   return new Response(new Uint8Array(data), {
     headers: {
       "Content-Type": "application/pdf",

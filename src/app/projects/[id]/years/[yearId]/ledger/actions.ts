@@ -14,6 +14,8 @@ import {
   looksEncryptedPdf,
 } from "@/lib/uploads";
 import { normalizeFileName } from "@/lib/uploadRules";
+import { pickEvidenceFileName, type NamingContext } from "@/lib/evidenceName";
+import { nextSeqNo } from "@/lib/seq";
 import { vatOf, lineAmount } from "@/lib/money";
 import { buildDocContext, docInclude, loadInspectionPhotos } from "@/lib/documents/context";
 import { renderPurchaseRequest } from "@/lib/templates/purchaseRequest";
@@ -205,12 +207,52 @@ async function checkEvidenceFile(file: File): Promise<{ buf: Buffer } | { error:
   return { buf };
 }
 
-async function storeAttachment(transactionId: number, file: File, buf: Buffer, evidenceCode: string | null) {
-  const fileName = normalizeFileName(file.name); // NFC 정규화·금지문자 제거 — 표시·다운로드 파일명
-  const { storedName, size } = await saveUploadBuffer(buf, fileName);
-  await prisma.attachment.create({
-    data: { transactionId, fileName, storedName, mimeType: file.type || null, size, evidenceCode },
+type StoreContext = NamingContext & { taken: Set<string> };
+
+/** 파일명 규칙에 필요한 거래 정보 + 이미 쓰인 첨부 이름 */
+async function namingContext(transactionId: number): Promise<StoreContext> {
+  const tx = await prisma.transaction.findUnique({
+    where: { id: transactionId },
+    select: {
+      seqNo: true,
+      vendor: true,
+      budgetItem: { select: { name: true } },
+      attachments: { select: { fileName: true } },
+    },
   });
+  return {
+    seqNo: tx?.seqNo ?? null,
+    vendor: tx?.vendor ?? null,
+    budgetItem: tx?.budgetItem?.name ?? null,
+    taken: new Set((tx?.attachments ?? []).map((a) => a.fileName)),
+  };
+}
+
+/** 저장 — 표시 이름은 "연번-증빙종류-거래처-비목.ext" 규칙으로, 원본 이름은 originalName 에 보관 */
+async function storeAttachment(transactionId: number, ctx: StoreContext, file: File, buf: Buffer, evidenceCode: string | null) {
+  const originalName = normalizeFileName(file.name);
+  const fileName = pickEvidenceFileName(ctx, evidenceCode, originalName, ctx.taken);
+  const { storedName, size } = await saveUploadBuffer(buf, originalName);
+  await prisma.attachment.create({
+    data: { transactionId, fileName, originalName, storedName, mimeType: file.type || null, size, evidenceCode },
+  });
+}
+
+/** 거래처·비목이 바뀌면 기존 첨부 이름도 규칙대로 다시 붙인다 (첨부 id 순, 같은 종류는 -2, -3 …) */
+async function renameAttachmentsFor(transactionId: number) {
+  const ctx = await namingContext(transactionId);
+  const atts = await prisma.attachment.findMany({
+    where: { transactionId },
+    select: { id: true, fileName: true, originalName: true, evidenceCode: true },
+    orderBy: { id: "asc" },
+  });
+  const taken = new Set<string>();
+  for (const a of atts) {
+    const originalName = a.originalName ?? normalizeFileName(a.fileName);
+    const fileName = pickEvidenceFileName(ctx, a.evidenceCode, originalName, taken);
+    if (fileName !== a.fileName || !a.originalName)
+      await prisma.attachment.update({ where: { id: a.id }, data: { fileName, originalName } });
+  }
 }
 
 /** 거래 추가 폼의 증빙 줄 — evidenceCode[i] 와 evidenceFile[i] 는 같은 순서로 들어온다. 파일 없는 줄은 무시 */
@@ -256,11 +298,13 @@ export async function createTransaction(
   const tx = await prisma.transaction.create({
     data: {
       projectYearId,
+      seqNo: await nextSeqNo(projectYearId),
       ...txData(raw, cat, money),
       items: { create: itemRows(parsed.items) },
     },
   });
-  for (const e of evidence) await storeAttachment(tx.id, e.file, e.buf, e.code);
+  const ctx = await namingContext(tx.id);
+  for (const e of evidence) await storeAttachment(tx.id, ctx, e.file, e.buf, e.code);
 
   revalidatePath(ledgerPath(projectId, projectYearId));
   revalidatePath(`/projects/${projectId}`);
@@ -291,6 +335,7 @@ export async function updateTransaction(
       items: { deleteMany: {}, create: itemRows(parsed.items) },
     },
   });
+  await renameAttachmentsFor(id); // 거래처·비목 변경을 첨부 파일명에 반영
   revalidatePath(ledgerPath(projectId, projectYearId));
   revalidatePath(`/projects/${projectId}`);
   redirect(ledgerPath(projectId, projectYearId));
@@ -342,7 +387,8 @@ export async function uploadAttachments(
     if ("error" in c) return { fieldErrors: { file: c.error } };
     checked.push({ ...row, buf: c.buf });
   }
-  for (const c of checked) await storeAttachment(transactionId, c.file, c.buf, c.code);
+  const ctx = await namingContext(transactionId);
+  for (const c of checked) await storeAttachment(transactionId, ctx, c.file, c.buf, c.code);
 
   revalidatePath(txEditPath(projectId, projectYearId, transactionId));
   revalidatePath(ledgerPath(projectId, projectYearId));

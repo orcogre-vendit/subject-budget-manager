@@ -5,6 +5,7 @@ import { ymd, won } from "@/lib/format";
 import { humanSize } from "@/lib/uploads";
 import { evaluateEvidence, evidenceLabel } from "@/lib/evidence";
 import { DEFAULT_INSTALL_LOCATION } from "@/lib/documents/context";
+import { seqLabel } from "@/lib/evidenceName";
 import TransactionForm, { type BudgetTree } from "@/components/TransactionForm";
 import AttachmentUpload from "@/components/AttachmentUpload";
 import DocumentsPanel from "@/components/DocumentsPanel";
@@ -44,6 +45,7 @@ export default async function EditTransactionPage({
         attachments: { orderBy: { uploadedAt: "desc" } },
         items: { orderBy: { sortOrder: "asc" } },
         documents: { orderBy: { createdAt: "desc" } },
+        budgetItem: { select: { name: true } },
         budgetSubItem: { include: { evidenceRequirements: { orderBy: { sortOrder: "asc" } } } },
         budgetDetailItem: true,
       },
@@ -117,7 +119,9 @@ export default async function EditTransactionPage({
       <Link href={ledgerHref} className="text-sm text-slate-400 hover:text-slate-700">
         ← 집행 원장
       </Link>
-      <h1 className="mt-2 text-2xl font-bold text-slate-900">거래 수정</h1>
+      <h1 className="mt-2 text-2xl font-bold text-slate-900">
+        거래 수정 <span className="ml-1 font-mono text-lg font-medium text-slate-400">No. {seqLabel(tx.seqNo)}</span>
+      </h1>
       {isOut && (
         <p className="mt-1 text-sm text-slate-500">
           공급가액 <b className="text-slate-800">{won(tx.amount)}</b> · 부가세 {won(tx.vatAmount)} · 총액{" "}
@@ -205,6 +209,9 @@ export default async function EditTransactionPage({
                         {evidenceLabel(a.evidenceCode)}
                       </span>
                       {humanSize(a.size)} · {ymd(a.uploadedAt)}
+                      {a.originalName && a.originalName !== a.fileName && (
+                        <span className="ml-1.5 text-slate-300">원본 {a.originalName}</span>
+                      )}
                     </p>
                   </div>
                   <DeleteButton
@@ -223,6 +230,12 @@ export default async function EditTransactionPage({
           action={uploadAttachments}
           hidden={{ transactionId, projectId, projectYearId }}
           suggestedCodes={reqs.map((r) => r.code)}
+          naming={{
+            seqNo: tx.seqNo,
+            vendor: tx.vendor,
+            budgetItem: tx.budgetItem?.name ?? null,
+            taken: tx.attachments.map((a) => a.fileName),
+          }}
         />
       </div>
     </div>

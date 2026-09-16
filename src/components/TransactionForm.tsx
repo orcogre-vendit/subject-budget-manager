@@ -9,6 +9,7 @@ import ItemsEditor, { itemsTotal, type ItemRow } from "@/components/ItemsEditor"
 import EvidenceDropInput from "@/components/EvidenceDropInput";
 import EvidenceReqPanel from "@/components/EvidenceReqPanel";
 import { vatOf, splitTotal } from "@/lib/money";
+import type { NamingContext } from "@/lib/evidenceName";
 
 /** 설치장소 기본값 — 서버(context.ts)와 동일 문자열. context.ts 는 fs 를 import 하므로 클라이언트에서 가져오지 않는다 */
 const DEFAULT_INSTALL_LOCATION = "주식회사 벤디트 기업부설연구소내";
@@ -61,13 +62,13 @@ function CategorySelects({
   budgetTree,
   initial,
   error,
-  onSubChange,
+  onCategoryChange,
 }: {
   budgetTree: BudgetTree;
   initial: Values;
   error?: string;
-  /** 세목이 기존 항목과 일치할 때 그 세목(증빙 요건 포함)을 알린다 */
-  onSubChange?: (sub: BudgetSub | undefined) => void;
+  /** 비목명과, 세목이 기존 항목과 일치할 때 그 세목(증빙 요건 포함)을 알린다 */
+  onCategoryChange?: (info: { itemName: string | null; sub: BudgetSub | undefined }) => void;
 }) {
   const [itemId, setItemId] = useState(initial.budgetItemId ?? "");
   const [subName, setSubName] = useState(initial.budgetSubItemName ?? "");
@@ -80,11 +81,14 @@ function CategorySelects({
 
   const changeItem = (v: string) => {
     setItemId(v);
-    onSubChange?.(findSub(budgetTree, v, subName));
+    onCategoryChange?.({
+      itemName: budgetTree.find((i) => String(i.id) === v)?.name ?? null,
+      sub: findSub(budgetTree, v, subName),
+    });
   };
   const changeSub = (v: string) => {
     setSubName(v);
-    onSubChange?.(findSub(budgetTree, itemId, v));
+    onCategoryChange?.({ itemName: item?.name ?? null, sub: findSub(budgetTree, itemId, v) });
   };
 
   return (
@@ -139,11 +143,13 @@ function TxFields({
   fe,
   budgetTree,
   withEvidence,
+  nextSeqNo,
 }: {
   v: Values;
   fe?: Record<string, string>;
   budgetTree: BudgetTree;
   withEvidence?: boolean;
+  nextSeqNo?: number | null;
 }) {
   const err = (k: string) => fe?.[k];
   const initialItems = parseInitialItems(v.items);
@@ -158,7 +164,13 @@ function TxFields({
   const [mode, setMode] = useState<"supply" | "total">("supply");
   const [totalInput, setTotalInput] = useState(0);
   const [sub, setSub] = useState<BudgetSub | undefined>(() => findSub(budgetTree, v.budgetItemId ?? "", v.budgetSubItemName ?? ""));
+  const [itemName, setItemName] = useState<string | null>(
+    () => budgetTree.find((i) => String(i.id) === (v.budgetItemId ?? ""))?.name ?? null,
+  );
+  const [vendorName, setVendorName] = useState(v.vendor ?? "");
   const [attachedCodes, setAttachedCodes] = useState<string[]>([]);
+  /** 첨부 파일명 미리보기용 문맥 — 저장되면 "연번-종류-거래처-비목.ext" 로 이름이 붙는다 */
+  const naming: NamingContext = { seqNo: nextSeqNo ?? null, vendor: vendorName || null, budgetItem: itemName };
 
   const rate = Math.trunc(Number(vatRate) || 0);
   const isIn = direction === "IN";
@@ -232,7 +244,12 @@ function TxFields({
         </div>
       </div>
 
-      <CategorySelects budgetTree={budgetTree} initial={v} error={err("budgetItemId")} onSubChange={setSub} />
+      <CategorySelects
+        budgetTree={budgetTree}
+        initial={v}
+        error={err("budgetItemId")}
+        onCategoryChange={({ itemName: n, sub: s }) => { setItemName(n); setSub(s); }}
+      />
 
       {!isIn && (
         <>
@@ -294,7 +311,10 @@ function TxFields({
 
           {/* 거래처·결제 */}
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div><Label text="거래처" /><input name="vendor" defaultValue={v.vendor ?? ""} placeholder="예: (주)디바이스마트" className={inputCls} /></div>
+            <div>
+              <Label text="거래처" />
+              <input name="vendor" value={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="예: (주)디바이스마트" className={inputCls} />
+            </div>
             <div><Label text="은행명" /><input name="vendorBank" defaultValue={v.vendorBank ?? ""} className={inputCls} /></div>
             <div><Label text="계좌번호" /><input name="vendorAccount" defaultValue={v.vendorAccount ?? ""} className={inputCls} /></div>
             <div><Label text="예금주" /><input name="vendorHolder" defaultValue={v.vendorHolder ?? ""} className={inputCls} /></div>
@@ -328,6 +348,7 @@ function TxFields({
                 error={err("evidenceFile")}
                 hint="(선택 · 저장할 때 함께 업로드, 수정 화면에서도 추가 가능)"
                 onCodesChange={setAttachedCodes}
+                naming={naming}
               />
             </>
           )}
@@ -351,6 +372,7 @@ export default function TransactionForm({
   hidden = {},
   cancelHref,
   withEvidence = false,
+  nextSeqNo,
 }: {
   budgetTree: BudgetTree;
   action: Action;
@@ -360,6 +382,8 @@ export default function TransactionForm({
   cancelHref?: string;
   /** 거래 추가 폼: 증빙 파일을 함께 올리는 줄을 보여준다 (수정 화면은 별도 첨부 섹션 사용) */
   withEvidence?: boolean;
+  /** 이 거래가 받을 연번 (첨부 파일명 미리보기용) */
+  nextSeqNo?: number | null;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const v = state.values ?? defaultValues;
@@ -380,6 +404,7 @@ export default function TransactionForm({
         fe={state.fieldErrors}
         budgetTree={budgetTree}
         withEvidence={withEvidence}
+        nextSeqNo={nextSeqNo}
       />
 
       <div className="mt-5 flex items-center gap-3">

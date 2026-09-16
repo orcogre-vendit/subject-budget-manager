@@ -145,6 +145,7 @@ model Transaction {
   budgetDetailItemId Int?
   budgetDetailItem   BudgetDetailItem? @relation(fields: [budgetDetailItemId], references: [id])
   plannedAmount      Int? // 품의 시점 공급가액 — RCMS 매칭으로 amount 가 실집행액으로 갱신될 때 보존
+  seqNo              Int? // 연차 안의 거래 연번(1부터, 생성 순). 첨부 파일명 "01-…" 의 번호. 삭제돼도 재사용하지 않음
   attachments        Attachment[]
   items              TransactionItem[]
   documents          GeneratedDocument[]
@@ -155,6 +156,7 @@ model Transaction {
   @@index([projectYearId])
   @@index([budgetItemId])
   @@index([date])
+  @@index([projectYearId, seqNo])
 }
 
 /// RCMS "연구비 이체 실행 대상 목록" 엑셀에서 가져온 사용등록 건 — 실행된 집행의 원본(source of truth).
@@ -214,8 +216,9 @@ model Attachment {
   id            Int         @id @default(autoincrement())
   transactionId Int
   transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  fileName      String // 원본 파일명
-  storedName    String // 저장 파일명(디스크)
+  fileName      String // 표시·다운로드 파일명 — 규칙 "연번-증빙종류-거래처-비목.ext" 로 자동 부여
+  originalName  String? // 업로드 당시 원본 파일명(정규화만 적용)
+  storedName    String // 저장 파일명(디스크, UUID)
   mimeType      String?
   size          Int         @default(0)
   evidenceCode  String? // 증빙 유형 태그 (EvidenceRequirement.code)
