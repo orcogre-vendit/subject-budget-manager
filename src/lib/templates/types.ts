@@ -51,6 +51,7 @@ export type DocContext = {
   evidenceLookup: string; // RCMS 증빙 조회 안내
 
   photos: DocPhoto[]; // 검수 사진 (evidenceCode=INSPECTION_PHOTO 첨부)
+  attachments: { name: string; code: string | null }[]; // 첨부된 증빙 전체 (품의서 첨부파일 목록용)
 };
 
 /** 원 단위 콤마 표기 */

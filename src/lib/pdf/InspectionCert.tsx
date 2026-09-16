@@ -90,7 +90,7 @@ export default function InspectionCert({ ctx }: { ctx: DocContext }) {
           </View>
           {unsupported.length > 0 && (
             <Text style={s.unsupported}>
-              ※ PDF 삽입 불가 형식(JPG/PNG 만 지원) — 별도 첨부: {unsupported.map((p) => p.caption).join(", ")}
+              ※ PDF 에 삽입하지 못한 사진(JPG/PNG 외 형식이거나 손상) — 별도 첨부: {unsupported.map((p) => p.caption).join(", ")}
             </Text>
           )}
         </Page>

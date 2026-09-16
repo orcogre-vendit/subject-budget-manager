@@ -2,7 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { won, ymd, executionRate } from "@/lib/format";
-import TransactionForm, { type BudgetTree } from "@/components/TransactionForm";
+import { seqLabel } from "@/lib/evidenceName";
+import TransactionForm from "@/components/TransactionForm";
+import TransactionDetail, { txDetailInclude, loadBudgetTree } from "@/components/TransactionDetail";
+import ClickableRow from "@/components/ClickableRow";
 import DeleteButton from "@/components/DeleteButton";
 import { createTransaction, deleteTransaction } from "./actions";
 
@@ -10,15 +13,19 @@ export const dynamic = "force-dynamic";
 
 export default async function LedgerPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; yearId: string }>;
+  searchParams: Promise<{ tx?: string }>;
 }) {
   const { id, yearId } = await params;
+  const { tx: txParam } = await searchParams;
   const projectId = Number(id);
   const projectYearId = Number(yearId);
   if (!projectId || !projectYearId) notFound();
+  const selectedId = Number(txParam) || null; // ?tx=ID → 해당 거래 상세를 아래 패널에 연다
 
-  const [year, transactions, budgetTree] = await Promise.all([
+  const [year, transactions, budgetTree, selected] = await Promise.all([
     prisma.projectYear.findUnique({
       where: { id: projectYearId },
       include: { project: { select: { id: true, name: true, code: true } } },
@@ -31,20 +38,19 @@ export default async function LedgerPage({
         budgetSubItem: { select: { name: true } },
         budgetDetailItem: { select: { name: true } },
         _count: { select: { attachments: true } },
+        rcmsRecord: { select: { id: true, progress: true, missingSince: true } },
       },
     }),
-    prisma.budgetItem.findMany({
-      orderBy: { sortOrder: "asc" },
-      include: {
-        subItems: {
-          orderBy: { name: "asc" },
-          include: { detailItems: { orderBy: { name: "asc" } } },
-        },
-      },
-    }),
+    loadBudgetTree(),
+    selectedId
+      ? prisma.transaction.findUnique({ where: { id: selectedId }, include: txDetailInclude })
+      : Promise.resolve(null),
   ]);
 
   if (!year || year.projectId !== projectId) notFound();
+  const detail = selected && selected.projectYearId === projectYearId ? selected : null;
+  const ledgerHref = `/projects/${projectId}/years/${projectYearId}/ledger`;
+  const detailHref = (txId: number) => `${ledgerHref}?tx=${txId}#detail`;
 
   // 비목별 입금/출금 집계
   const byItem = new Map<string, { in: number; out: number }>();
@@ -65,6 +71,8 @@ export default async function LedgerPage({
   }
   const balance = totalIn - totalOut;
   const rate = executionRate(totalOut, year.budgetCash);
+  // 다음 거래가 받을 연번 — 첨부 파일명 미리보기("03-거래명세서-…")용. 실제 부여는 서버가 저장 시점에 다시 계산
+  const nextSeqNo = transactions.reduce((m, t) => Math.max(m, t.seqNo ?? 0), 0) + 1;
 
   const hidden = { projectId, projectYearId };
 
@@ -84,6 +92,14 @@ export default async function LedgerPage({
           </span>
         ) : null}
       </h1>
+      {year.ledgerType === "PROJECT" && (
+        <p className="mt-1 text-sm">
+          <Link href={`/rcms/${projectYearId}`} className="text-slate-500 underline hover:text-slate-800">
+            🔁 RCMS 대조표
+          </Link>
+          <span className="ml-2 text-xs text-slate-400">출금은 품의로 입력하고, 실집행액은 RCMS 엑셀 가져오기로 반영됩니다.</span>
+        </p>
+      )}
 
       {/* 요약 카드 */}
       <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -162,6 +178,9 @@ export default async function LedgerPage({
       <h2 className="mt-8 text-lg font-bold text-slate-900">
         거래 내역 ({transactions.length})
       </h2>
+      {transactions.length > 0 && !detail && (
+        <p className="mt-1 text-xs text-slate-400">행을 누르면 아래에 상세(수정·서류·증빙)가 열립니다.</p>
+      )}
       {transactions.length === 0 ? (
         <p className="mt-3 rounded-lg bg-slate-100 px-4 py-6 text-center text-sm text-slate-500">
           집행 내역이 없습니다. 아래에서 거래를 입력하세요.
@@ -171,6 +190,7 @@ export default async function LedgerPage({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
+                <th className="px-3 py-2.5 font-medium">No</th>
                 <th className="px-3 py-2.5 font-medium">날짜</th>
                 <th className="px-3 py-2.5 font-medium">상태</th>
                 <th className="px-3 py-2.5 font-medium">분류</th>
@@ -192,10 +212,10 @@ export default async function LedgerPage({
                 const isIn = t.direction === "IN";
                 const isCancelled = t.status === "취소";
                 return (
-                  <tr
-                    key={t.id}
-                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
-                  >
+                  <ClickableRow key={t.id} href={detailHref(t.id)} selected={t.id === detail?.id}>
+                    <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-500">
+                      {seqLabel(t.seqNo)}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">
                       {ymd(t.date)}
                     </td>
@@ -211,6 +231,20 @@ export default async function LedgerPage({
                       >
                         {t.status}
                       </span>
+                      {t.rcmsRecord && (
+                        <span
+                          className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            t.rcmsRecord.missingSince
+                              ? "bg-green-100 text-green-700"
+                              : t.rcmsRecord.progress === "임시저장"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-blue-100 text-blue-700"
+                          }`}
+                          title="RCMS 사용등록 건과 연결됨"
+                        >
+                          RCMS {t.rcmsRecord.missingSince ? "이체완료" : t.rcmsRecord.progress ?? "등록"}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-slate-600">
                       {cat || "-"}
@@ -237,11 +271,8 @@ export default async function LedgerPage({
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-3">
-                        <Link
-                          href={`/projects/${projectId}/years/${projectYearId}/ledger/${t.id}/edit`}
-                          className="text-xs font-medium text-slate-600 hover:underline"
-                        >
-                          수정
+                        <Link href={detailHref(t.id)} className="text-xs font-medium text-slate-600 hover:underline">
+                          열기
                         </Link>
                         <DeleteButton
                           action={deleteTransaction}
@@ -251,7 +282,7 @@ export default async function LedgerPage({
                         />
                       </div>
                     </td>
-                  </tr>
+                  </ClickableRow>
                 );
               })}
             </tbody>
@@ -259,15 +290,36 @@ export default async function LedgerPage({
         </div>
       )}
 
-      {/* 거래 추가 */}
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="text-base font-semibold text-slate-900">거래 추가</h2>
-        <TransactionForm
-          budgetTree={budgetTree as BudgetTree}
-          action={createTransaction}
-          submitLabel="거래 등록"
-          hidden={hidden}
-        />
+      {/* 아래 패널: 행을 고르면 그 거래의 상세(수정·서류·증빙), 아니면 거래 추가 */}
+      <div id="detail" className="mt-6 scroll-mt-4">
+        {detail ? (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-bold text-slate-900">
+                <span className="font-mono text-slate-400">No. {seqLabel(detail.seqNo)}</span>
+                <span className="ml-2">{detail.description ?? detail.vendor ?? "거래 상세"}</span>
+              </h2>
+              <Link href={ledgerHref} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                ✕ 닫고 새 거래 추가
+              </Link>
+            </div>
+            <div className="mt-2">
+              <TransactionDetail tx={detail} projectId={projectId} projectYearId={projectYearId} budgetTree={budgetTree} cancelHref={ledgerHref} />
+            </div>
+          </>
+        ) : (
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <h2 className="text-base font-semibold text-slate-900">거래 추가</h2>
+            <TransactionForm
+              budgetTree={budgetTree}
+              action={createTransaction}
+              submitLabel="거래 등록"
+              hidden={hidden}
+              withEvidence
+              nextSeqNo={nextSeqNo}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
