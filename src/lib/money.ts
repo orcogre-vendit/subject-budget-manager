@@ -7,6 +7,20 @@ export function vatOf(supplyAmount: number, ratePercent: number): number {
   return Math.trunc((supplyAmount * ratePercent + 50) / 100);
 }
 
+/**
+ * 총액(부가세 포함) → 공급가액/부가세 분리. 카드 결제액처럼 총액만 아는 경우.
+ * 공급가 = 총액×100/(100+율) 반올림, 부가세 = 총액 − 공급가 (합이 항상 총액과 일치). 정수 연산만.
+ */
+export function splitTotal(total: number, ratePercent: number): { supply: number; vat: number } {
+  const t = Math.max(0, Math.trunc(total));
+  const r = Math.max(0, Math.trunc(ratePercent));
+  if (t === 0) return { supply: 0, vat: 0 };
+  if (r === 0) return { supply: t, vat: 0 };
+  const d = 100 + r;
+  const supply = Math.trunc((t * 100 + Math.trunc(d / 2)) / d);
+  return { supply, vat: t - supply };
+}
+
 /** 품목 금액 = 수량 × 단가 (정수) */
 export function lineAmount(quantity: number, unitPrice: number): number {
   return Math.trunc(quantity) * Math.trunc(unitPrice);

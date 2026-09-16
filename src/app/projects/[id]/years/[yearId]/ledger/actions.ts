@@ -13,6 +13,7 @@ import {
   MAX_UPLOAD_BYTES,
   looksEncryptedPdf,
 } from "@/lib/uploads";
+import { normalizeFileName } from "@/lib/uploadRules";
 import { vatOf, lineAmount } from "@/lib/money";
 import { buildDocContext, docInclude, loadInspectionPhotos } from "@/lib/documents/context";
 import { renderPurchaseRequest } from "@/lib/templates/purchaseRequest";
@@ -99,13 +100,17 @@ function parseItems(raw: string): { items: ItemIn[]; error?: string } {
   return { items };
 }
 
+const itemsSum = (items: ItemIn[]) => items.reduce((s, it) => s + it.amount, 0);
+
 function validateTx(raw: Record<string, string>, items: ItemIn[]): Record<string, string> {
   const e: Record<string, string> = {};
   if (!raw.date) e.date = "날짜는 필수입니다.";
   if (!["IN", "OUT"].includes(raw.direction)) e.direction = "입금/출금을 선택하세요.";
-  if (!items.length) {
+  // 품목 합계가 0(단가 미입력)이면 직접 입력한 금액을 쓴다 — 품목 행만 있다고 금액을 0 으로 덮어쓰지 않는다
+  if (itemsSum(items) <= 0) {
     const amt = Number(raw.amount);
-    if (!raw.amount || Number.isNaN(amt) || amt <= 0) e.amount = "금액은 0보다 커야 합니다.";
+    if (!raw.amount || Number.isNaN(amt) || amt <= 0)
+      e.amount = items.length ? "품목 단가를 입력하거나 공급가액을 직접 입력하세요." : "금액은 0보다 커야 합니다.";
   }
   if (!raw.budgetItemId) e.budgetItemId = "비목을 선택하세요.";
   if (raw.vatRate !== "") {
@@ -119,11 +124,10 @@ function validateTx(raw: Record<string, string>, items: ItemIn[]): Record<string
   return e;
 }
 
-/** 공급가액·부가세 확정 — 품목이 있으면 합계로, 부가세는 미입력 시 율로 자동 계산. 입금(IN)은 부가세 없음 */
+/** 공급가액·부가세 확정 — 품목 합계가 있으면 합계로, 없으면 직접 입력값. 부가세는 미입력 시 율로 자동 계산. 입금(IN)은 부가세 없음 */
 function deriveMoney(raw: Record<string, string>, items: ItemIn[]) {
-  const amount = items.length
-    ? items.reduce((s, it) => s + it.amount, 0)
-    : Math.round(Number(raw.amount));
+  const sum = itemsSum(items);
+  const amount = sum > 0 ? sum : Math.round(Number(raw.amount));
   if (raw.direction === "IN") return { amount, vatRate: 0, vatAmount: 0 };
   const vatRate = raw.vatRate === "" ? 10 : Math.trunc(Number(raw.vatRate));
   const vatAmount =
@@ -202,9 +206,10 @@ async function checkEvidenceFile(file: File): Promise<{ buf: Buffer } | { error:
 }
 
 async function storeAttachment(transactionId: number, file: File, buf: Buffer, evidenceCode: string | null) {
-  const { storedName, size } = await saveUploadBuffer(buf, file.name);
+  const fileName = normalizeFileName(file.name); // NFC 정규화·금지문자 제거 — 표시·다운로드 파일명
+  const { storedName, size } = await saveUploadBuffer(buf, fileName);
   await prisma.attachment.create({
-    data: { transactionId, fileName: file.name, storedName, mimeType: file.type || null, size, evidenceCode },
+    data: { transactionId, fileName, storedName, mimeType: file.type || null, size, evidenceCode },
   });
 }
 

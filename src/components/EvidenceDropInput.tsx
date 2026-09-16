@@ -2,9 +2,10 @@
 
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { EVIDENCE_CODES } from "@/lib/evidence";
-import { ALLOWED_EXT, MAX_UPLOAD_BYTES, extOf } from "@/lib/uploadRules";
+import { ALLOWED_EXT, MAX_UPLOAD_BYTES, extOf, normalizeFileName } from "@/lib/uploadRules";
 
-type Picked = { id: number; file: File; code: string; problem: string | null };
+/** name 은 정규화된 표시용 파일명(서버도 같은 규칙으로 저장). file 은 원본 File */
+type Picked = { id: number; file: File; name: string; code: string; problem: string | null };
 
 /** 파일명으로 증빙 유형 추측 — 순서대로 첫 매치. 못 맞히면 빈 값(사용자가 고름) */
 const NAME_RULES: [RegExp, string][] = [
@@ -31,11 +32,14 @@ export function guessEvidenceCode(fileName: string): string {
   return "";
 }
 
-function problemOf(file: File): string | null {
-  if (!ALLOWED_EXT.has(extOf(file.name))) return "허용되지 않는 형식";
-  if (file.size > MAX_UPLOAD_BYTES) return "20MB 초과";
+function problemOf(name: string, size: number): string | null {
+  if (!ALLOWED_EXT.has(extOf(name))) return "허용되지 않는 형식";
+  if (size > MAX_UPLOAD_BYTES) return "20MB 초과";
   return null;
 }
+
+/** 제출될(규칙 통과 + 유형 선택된) 증빙 코드 목록 — 부모의 요건 체크에 쓴다 */
+const codesOf = (list: Picked[]) => list.filter((p) => !p.problem && p.code).map((p) => p.code);
 
 const human = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
 
@@ -49,11 +53,14 @@ export default function EvidenceDropInput({
   error,
   title = "증빙 첨부",
   hint,
+  onCodesChange,
 }: {
   suggestedCodes?: string[];
   error?: string;
   title?: string;
   hint?: string;
+  /** 제출될 증빙 코드가 바뀔 때마다 알림 (요건 충족 표시용) */
+  onCodesChange?: (codes: string[]) => void;
 }) {
   const [picked, setPicked] = useState<Picked[]>([]);
   const [over, setOver] = useState(false);
@@ -63,11 +70,18 @@ export default function EvidenceDropInput({
   const suggested = suggestedCodes.filter((c) => EVIDENCE_CODES[c]);
   const others = Object.keys(EVIDENCE_CODES).filter((c) => !suggested.includes(c));
 
+  const commit = (next: Picked[]) => {
+    setPicked(next);
+    onCodesChange?.(codesOf(next));
+  };
   const add = (files: FileList | File[]) => {
     const next: Picked[] = [...files]
       .filter((f) => f.size > 0)
-      .map((f) => ({ id: seq.current++, file: f, code: guessEvidenceCode(f.name), problem: problemOf(f) }));
-    if (next.length) setPicked((p) => [...p, ...next]);
+      .map((f) => {
+        const name = normalizeFileName(f.name);
+        return { id: seq.current++, file: f, name, code: guessEvidenceCode(name), problem: problemOf(name, f.size) };
+      });
+    if (next.length) commit([...picked, ...next]);
   };
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -78,8 +92,8 @@ export default function EvidenceDropInput({
     if (e.target.files) add(e.target.files);
     e.target.value = ""; // 같은 파일을 다시 골라도 change 가 나도록
   };
-  const setCode = (id: number, code: string) => setPicked((p) => p.map((x) => (x.id === id ? { ...x, code } : x)));
-  const remove = (id: number) => setPicked((p) => p.filter((x) => x.id !== id));
+  const setCode = (id: number, code: string) => commit(picked.map((x) => (x.id === id ? { ...x, code } : x)));
+  const remove = (id: number) => commit(picked.filter((x) => x.id !== id));
   /** 숨은 file input 에 File 을 심는다 (DataTransfer 로 programmatic 설정). 폼 리셋 뒤에도 매 렌더마다 다시 심는다 */
   const plant = (file: File) => (el: HTMLInputElement | null) => {
     if (!el) return;
@@ -121,7 +135,7 @@ export default function EvidenceDropInput({
           {picked.map((p) => (
             <li key={p.id} className="flex flex-col gap-1.5 px-3 py-2 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-slate-800">{p.file.name}</p>
+                <p className="truncate text-sm text-slate-800">{p.name}</p>
                 <p className="text-xs text-slate-400">
                   {human(p.file.size)}
                   {p.problem && <span className="ml-2 font-medium text-red-600">{p.problem} · 업로드에서 제외</span>}
@@ -154,7 +168,7 @@ export default function EvidenceDropInput({
                 type="button"
                 onClick={() => remove(p.id)}
                 className="self-end text-xs text-slate-400 hover:text-red-600 sm:self-auto"
-                aria-label={`${p.file.name} 제거`}
+                aria-label={`${p.name} 제거`}
               >
                 ✕
               </button>

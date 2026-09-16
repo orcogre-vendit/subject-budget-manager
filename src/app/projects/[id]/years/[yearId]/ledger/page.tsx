@@ -42,7 +42,10 @@ export default async function LedgerPage({
           include: {
             detailItems: { orderBy: { name: "asc" } },
             // 세목을 고르면 증빙 첨부 줄의 유형 목록에 그 세목 요건을 먼저 보여준다
-            evidenceRequirements: { select: { code: true, requirement: true }, orderBy: { sortOrder: "asc" } },
+            evidenceRequirements: {
+              select: { code: true, label: true, requirement: true, groupKey: true },
+              orderBy: { sortOrder: "asc" },
+            },
           },
         },
       },

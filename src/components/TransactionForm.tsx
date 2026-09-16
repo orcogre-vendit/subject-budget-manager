@@ -3,10 +3,12 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import type { FormState } from "@/app/projects/actions";
+import type { ReqRow } from "@/lib/evidence";
 import MoneyInput from "@/components/MoneyInput";
 import ItemsEditor, { itemsTotal, type ItemRow } from "@/components/ItemsEditor";
 import EvidenceDropInput from "@/components/EvidenceDropInput";
-import { vatOf } from "@/lib/money";
+import EvidenceReqPanel from "@/components/EvidenceReqPanel";
+import { vatOf, splitTotal } from "@/lib/money";
 
 /** 설치장소 기본값 — 서버(context.ts)와 동일 문자열. context.ts 는 fs 를 import 하므로 클라이언트에서 가져오지 않는다 */
 const DEFAULT_INSTALL_LOCATION = "주식회사 벤디트 기업부설연구소내";
@@ -15,7 +17,7 @@ export type BudgetSub = {
   id: number;
   name: string;
   detailItems: { id: number; name: string }[];
-  evidenceRequirements?: { code: string; requirement: string }[];
+  evidenceRequirements?: ReqRow[];
 };
 
 export type BudgetTree = {
@@ -30,6 +32,12 @@ type Values = Record<string, string>;
 const inputCls =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900";
 
+/** 부가세율 선택지 — 국내 과세 10%, 면세·영세·해외 0% */
+const VAT_RATES = [
+  { value: "10", label: "10% (일반)" },
+  { value: "0", label: "0% (면세·영세·해외)" },
+];
+
 function Label({ text, required, hint }: { text: string; required?: boolean; hint?: string }) {
   return (
     <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -40,6 +48,10 @@ function Label({ text, required, hint }: { text: string; required?: boolean; hin
   );
 }
 const Err = ({ msg }: { msg?: string }) => (msg ? <p className="mt-1 text-xs text-red-600">{msg}</p> : null);
+
+function findSub(tree: BudgetTree, itemId: string, subName: string): BudgetSub | undefined {
+  return tree.find((i) => String(i.id) === itemId)?.subItems.find((s) => s.name === subName);
+}
 
 /**
  * 비목(관리형 선택) + 세목·세세목(자유 입력 + 기존값 추천).
@@ -68,11 +80,11 @@ function CategorySelects({
 
   const changeItem = (v: string) => {
     setItemId(v);
-    onSubChange?.(budgetTree.find((i) => String(i.id) === v)?.subItems.find((s) => s.name === subName));
+    onSubChange?.(findSub(budgetTree, v, subName));
   };
   const changeSub = (v: string) => {
     setSubName(v);
-    onSubChange?.(item?.subItems.find((s) => s.name === v));
+    onSubChange?.(findSub(budgetTree, itemId, v));
   };
 
   return (
@@ -119,6 +131,8 @@ function parseInitialItems(json?: string): ItemRow[] {
   }
 }
 
+const digits = (s?: string) => Number((s ?? "").replace(/\D/g, "")) || 0;
+
 /** 폼 본문 — 액션 결과마다 부모가 key 를 바꿔 리마운트하므로 상태가 항상 올바른 초기값에서 시작 */
 function TxFields({
   v,
@@ -136,14 +150,44 @@ function TxFields({
 
   const [direction, setDirection] = useState(v.direction ?? "");
   const [itemsTot, setItemsTot] = useState(() => itemsTotal(initialItems));
-  const [manual, setManual] = useState(() => Number((v.amount ?? "").replace(/\D/g, "")) || 0);
+  const [manual, setManual] = useState(() => digits(v.amount));
   const [vatRate, setVatRate] = useState(v.vatRate ?? "10");
-  const [suggestedCodes, setSuggestedCodes] = useState<string[]>([]);
+  /** 사용자가 손으로 고친 부가세. null 이면 율로 자동 계산 */
+  const [vatEdit, setVatEdit] = useState<number | null>(() => (v.vatAmount ? digits(v.vatAmount) : null));
+  /** 금액 입력 기준 — 공급가액을 아는 경우 / 카드 결제액(총액)만 아는 경우 */
+  const [mode, setMode] = useState<"supply" | "total">("supply");
+  const [totalInput, setTotalInput] = useState(0);
+  const [sub, setSub] = useState<BudgetSub | undefined>(() => findSub(budgetTree, v.budgetItemId ?? "", v.budgetSubItemName ?? ""));
+  const [attachedCodes, setAttachedCodes] = useState<string[]>([]);
 
-  const supply = itemsTot > 0 ? itemsTot : manual;
   const rate = Math.trunc(Number(vatRate) || 0);
-  const autoVat = vatOf(supply, rate);
   const isIn = direction === "IN";
+  const totalMode = mode === "total" && itemsTot === 0;
+
+  // 공급가액·부가세 확정 — 품목 합계 > 총액 분리 > 직접 입력 순. 부가세는 자동값 또는 사용자 수정값
+  let supply: number;
+  let vat: number;
+  if (itemsTot > 0) {
+    supply = itemsTot;
+    vat = vatEdit ?? vatOf(supply, rate);
+  } else if (totalMode) {
+    ({ supply, vat } = splitTotal(totalInput, rate));
+  } else {
+    supply = manual;
+    vat = vatEdit ?? vatOf(supply, rate);
+  }
+  const total = supply + vat;
+
+  const switchMode = (next: "supply" | "total") => {
+    if (next === mode) return;
+    if (next === "total") setTotalInput(total);
+    else {
+      // 총액 기준에서 계산된 값을 그대로 이어받는다
+      setManual(supply);
+      setVatEdit(vat);
+    }
+    setMode(next);
+  };
 
   return (
     <>
@@ -171,24 +215,24 @@ function TxFields({
           <Err msg={err("direction")} />
         </div>
         <div>
-          <Label text={isIn ? "금액(원)" : "공급가액(원)"} required hint={itemsTot > 0 ? "품목 합계" : undefined} />
+          <Label
+            text={isIn ? "금액(원)" : "공급가액(원)"}
+            required
+            hint={itemsTot > 0 ? "품목 합계" : totalMode ? "총액에서 계산" : undefined}
+          />
+          {/* key: 자기 값에는 의존하지 않고, 다른 곳에서 계산된 값이 바뀔 때만 리마운트 (입력 중 포커스 유지) */}
           <MoneyInput
-            key={`amt-${itemsTot}`}
+            key={`amt-${itemsTot}-${mode}-${totalMode ? supply : ""}`}
             name="amount"
             defaultValue={String(supply || "")}
-            readOnly={itemsTot > 0}
-            onValueChange={(d) => setManual(Number(d) || 0)}
+            readOnly={itemsTot > 0 || totalMode}
+            onValueChange={(d) => { setManual(Number(d) || 0); setVatEdit(null); }}
           />
           <Err msg={err("amount")} />
         </div>
       </div>
 
-      <CategorySelects
-        budgetTree={budgetTree}
-        initial={v}
-        error={err("budgetItemId")}
-        onSubChange={(sub) => setSuggestedCodes((sub?.evidenceRequirements ?? []).map((r) => r.code))}
-      />
+      <CategorySelects budgetTree={budgetTree} initial={v} error={err("budgetItemId")} onSubChange={setSub} />
 
       {!isIn && (
         <>
@@ -197,21 +241,56 @@ function TxFields({
           {/* 부가세 — 연구비 아님(회사 자금), 잔액 계산 제외 */}
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
-              <Label text="부가세율(%)" />
-              <input type="number" name="vatRate" min={0} max={100} step={1} value={vatRate}
-                onChange={(e) => setVatRate(e.target.value)} className={inputCls} />
+              <Label text="부가세율" />
+              <select
+                name="vatRate"
+                value={vatRate}
+                onChange={(e) => { setVatRate(e.target.value); setVatEdit(null); }}
+                className={inputCls}
+              >
+                {VAT_RATES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {!VAT_RATES.some((o) => o.value === vatRate) && <option value={vatRate}>{vatRate}%</option>}
+              </select>
               <Err msg={err("vatRate")} />
             </div>
             <div>
-              <Label text="부가세(원)" hint="자동계산·수정가능" />
-              <MoneyInput key={`vat-${supply}-${rate}`} name="vatAmount" defaultValue={String(autoVat || "")} />
+              <Label text="부가세(원)" hint={totalMode ? "총액에서 계산" : "자동계산·수정가능"} />
+              <MoneyInput
+                key={`vat-${supply}-${rate}-${mode}`}
+                name="vatAmount"
+                defaultValue={String(vat)}
+                readOnly={totalMode}
+                onValueChange={(d) => setVatEdit(Number(d) || 0)}
+              />
               <Err msg={err("vatAmount")} />
             </div>
-            <div className="col-span-2 flex items-end pb-2 text-sm text-slate-600">
-              총액 <span className="ml-1 font-semibold text-slate-900">{(supply + autoVat).toLocaleString("ko-KR")}원</span>
-              <span className="ml-2 text-xs text-slate-400">(부가세는 회사 자금 · 연구비 잔액에서 제외)</span>
+            <div>
+              <Label text="총액(원)" hint={totalMode ? "카드 결제액 입력" : "공급가+부가세"} />
+              <MoneyInput
+                key={`tot-${mode}-${totalMode ? "" : total}`}
+                name="totalAmount"
+                defaultValue={String(total || "")}
+                readOnly={!totalMode}
+                onValueChange={(d) => setTotalInput(Number(d) || 0)}
+              />
+            </div>
+            <div>
+              <Label text="입력 기준" hint={itemsTot > 0 ? "(품목 합계 사용 중)" : undefined} />
+              <div className="flex flex-col gap-1 pt-1.5 text-sm text-slate-700 sm:flex-row sm:gap-3">
+                <label className="flex items-center gap-1">
+                  <input type="radio" name="amountMode" value="supply" checked={!totalMode} disabled={itemsTot > 0} onChange={() => switchMode("supply")} />
+                  공급가액
+                </label>
+                <label className="flex items-center gap-1">
+                  <input type="radio" name="amountMode" value="total" checked={totalMode} disabled={itemsTot > 0} onChange={() => switchMode("total")} />
+                  총액(결제액)
+                </label>
+              </div>
             </div>
           </div>
+          <p className="mt-1 text-xs text-slate-400">
+            부가세는 회사 자금이라 연구비 잔액에서 제외됩니다. 총액 기준이면 공급가액 = 총액 × 100 / (100 + 세율) 반올림, 부가세 = 나머지.
+          </p>
 
           {/* 거래처·결제 */}
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -242,11 +321,15 @@ function TxFields({
           </div>
 
           {withEvidence && (
-            <EvidenceDropInput
-              suggestedCodes={suggestedCodes}
-              error={err("evidenceFile")}
-              hint="(선택 · 저장할 때 함께 업로드, 수정 화면에서도 추가 가능)"
-            />
+            <>
+              <EvidenceReqPanel subName={sub?.name} reqs={sub?.evidenceRequirements ?? []} attachedCodes={attachedCodes} />
+              <EvidenceDropInput
+                suggestedCodes={(sub?.evidenceRequirements ?? []).map((r) => r.code)}
+                error={err("evidenceFile")}
+                hint="(선택 · 저장할 때 함께 업로드, 수정 화면에서도 추가 가능)"
+                onCodesChange={setAttachedCodes}
+              />
+            </>
           )}
         </>
       )}
