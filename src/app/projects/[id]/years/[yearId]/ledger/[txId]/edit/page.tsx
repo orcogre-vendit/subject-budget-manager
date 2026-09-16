@@ -11,7 +11,7 @@ import DocumentsPanel from "@/components/DocumentsPanel";
 import DeleteButton from "@/components/DeleteButton";
 import {
   updateTransaction,
-  uploadAttachment,
+  uploadAttachments,
   deleteAttachment,
   generateDocument,
   deleteDocument,
@@ -220,7 +220,7 @@ export default async function EditTransactionPage({
         )}
 
         <AttachmentUpload
-          action={uploadAttachment}
+          action={uploadAttachments}
           hidden={{ transactionId, projectId, projectYearId }}
           suggestedCodes={reqs.map((r) => r.code)}
         />

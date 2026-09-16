@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { FormState } from "@/app/projects/actions";
 import MoneyInput from "@/components/MoneyInput";
 import ItemsEditor, { itemsTotal, type ItemRow } from "@/components/ItemsEditor";
-import EvidenceFilesInput from "@/components/EvidenceFilesInput";
+import EvidenceDropInput from "@/components/EvidenceDropInput";
 import { vatOf } from "@/lib/money";
 
 /** 설치장소 기본값 — 서버(context.ts)와 동일 문자열. context.ts 는 fs 를 import 하므로 클라이언트에서 가져오지 않는다 */
@@ -241,7 +241,13 @@ function TxFields({
               placeholder="예: 스마트 마스크 PoC 보드 제작을 위한 개발보드 및 센서 구매" className={inputCls} />
           </div>
 
-          {withEvidence && <EvidenceFilesInput suggestedCodes={suggestedCodes} error={err("evidenceFile")} />}
+          {withEvidence && (
+            <EvidenceDropInput
+              suggestedCodes={suggestedCodes}
+              error={err("evidenceFile")}
+              hint="(선택 · 저장할 때 함께 업로드, 수정 화면에서도 추가 가능)"
+            />
+          )}
         </>
       )}
 
@@ -284,7 +290,14 @@ export default function TransactionForm({
         <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{state.error}</p>
       )}
 
-      <TxFields key={JSON.stringify(v)} v={v} fe={state.fieldErrors} budgetTree={budgetTree} withEvidence={withEvidence} />
+      {/* 성공(nonce 갱신)·값 변경 시 리마운트 → 품목·증빙·금액 같은 내부 상태까지 초기값으로 */}
+      <TxFields
+        key={`${state.nonce ?? 0}:${JSON.stringify(v)}`}
+        v={v}
+        fe={state.fieldErrors}
+        budgetTree={budgetTree}
+        withEvidence={withEvidence}
+      />
 
       <div className="mt-5 flex items-center gap-3">
         <button type="submit" disabled={pending}

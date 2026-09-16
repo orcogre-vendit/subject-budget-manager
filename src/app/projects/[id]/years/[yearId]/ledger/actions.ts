@@ -259,7 +259,7 @@ export async function createTransaction(
 
   revalidatePath(ledgerPath(projectId, projectYearId));
   revalidatePath(`/projects/${projectId}`);
-  return { values: {} }; // 폼 초기화(연속 입력)
+  return { values: {}, nonce: Date.now() }; // 폼 초기화(연속 입력)
 }
 
 export async function updateTransaction(
@@ -317,7 +317,8 @@ export async function deleteTransaction(fd: FormData): Promise<void> {
 
 // ---------- 증빙 첨부 ----------
 
-export async function uploadAttachment(
+/** 거래 수정 화면 — 드롭존에 올린 여러 증빙을 한 번에 업로드 (evidenceFile[i] ↔ evidenceCode[i]) */
+export async function uploadAttachments(
   _prev: FormState,
   fd: FormData,
 ): Promise<FormState> {
@@ -326,17 +327,21 @@ export async function uploadAttachment(
   const projectYearId = Number(fd.get("projectYearId"));
   if (!transactionId || !projectId || !projectYearId) return { error: "잘못된 거래입니다." };
 
-  const file = fd.get("file");
-  const evidenceCode = ((fd.get("evidenceCode") as string | null) ?? "").trim() || null;
-  if (!(file instanceof File) || file.size === 0)
-    return { fieldErrors: { file: "파일을 선택하세요." } };
-  const checked = await checkEvidenceFile(file);
-  if ("error" in checked) return { fieldErrors: { file: checked.error } };
+  const rows = pickEvidenceRows(fd);
+  if (!rows.length) return { fieldErrors: { file: "파일을 올려주세요." } };
 
-  await storeAttachment(transactionId, file, checked.buf, evidenceCode);
+  // 전부 검증한 뒤 저장 — 중간에 실패해 일부만 올라가는 일을 막는다
+  const checked: { file: File; code: string | null; buf: Buffer }[] = [];
+  for (const row of rows) {
+    const c = await checkEvidenceFile(row.file);
+    if ("error" in c) return { fieldErrors: { file: c.error } };
+    checked.push({ ...row, buf: c.buf });
+  }
+  for (const c of checked) await storeAttachment(transactionId, c.file, c.buf, c.code);
+
   revalidatePath(txEditPath(projectId, projectYearId, transactionId));
   revalidatePath(ledgerPath(projectId, projectYearId));
-  return { values: {} };
+  return { values: {}, nonce: Date.now() };
 }
 
 export async function deleteAttachment(fd: FormData): Promise<void> {
