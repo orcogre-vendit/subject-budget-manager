@@ -1,4 +1,4 @@
-import { mkdir, writeFile, unlink } from "fs/promises";
+import { mkdir, writeFile, unlink, rmdir } from "fs/promises";
 import path from "path";
 import { extOf } from "./uploadRules";
 
@@ -40,11 +40,22 @@ export async function saveUpload(
   return saveUploadBuffer(Buffer.from(await file.arrayBuffer()), file.name);
 }
 
+/**
+ * UPLOAD_DIR 기준 상대경로의 파일 삭제 — 증빙 첨부는 "UUID.ext", 생성 PDF 는 "generated/{txId}/파일.pdf".
+ * 하위 폴더의 마지막 파일이었다면 비게 된 폴더(generated/{txId})도 함께 정리한다.
+ */
 export async function deleteUpload(storedName: string): Promise<void> {
   try {
     await unlink(path.join(UPLOAD_DIR, storedName));
   } catch {
     // 파일이 이미 없으면 무시
+  }
+  const relDir = path.dirname(storedName);
+  if (relDir === ".") return; // UPLOAD_DIR 바로 아래 파일 — 정리할 폴더 없음
+  try {
+    await rmdir(path.join(UPLOAD_DIR, relDir)); // 비어 있을 때만 성공한다
+  } catch {
+    // 다른 파일이 남아 있거나 이미 지워진 폴더면 무시
   }
 }
 
