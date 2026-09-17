@@ -41,7 +41,9 @@ done
 echo "▶ Cloudflare Tunnel 시작..."
 URL=""
 for attempt in 1 2 3; do
-  LOG="$(mktemp)"
+  # 로그는 /tmp 가 아니라 이 디렉토리(데이터 디스크)에 둔다 — 루트 디스크가 가득 차면 /tmp 에 한 줄도 못 써서
+  # cloudflared 가 멀쩡히 떠도 URL 을 못 읽고 "실패"로 끝난다 (2026-09-17 실제 장애).
+  LOG="$(mktemp "$PWD/.cloudflared.XXXXXX")" || { echo "✗ 로그 파일을 만들 수 없습니다 — 디스크 여유 공간 확인: df -h . /tmp"; exit 1; }
   cloudflared tunnel --url "http://localhost:${PORT}" >"$LOG" 2>&1 &
   CF_PID=$!
   for _ in $(seq 1 20); do
@@ -52,7 +54,7 @@ for attempt in 1 2 3; do
   done
   [ -n "$URL" ] && break
   echo "  ↻ 시도 ${attempt} 실패 (Cloudflare 일시 오류일 수 있음):"
-  tail -2 "$LOG" 2>/dev/null | sed 's/^/    /'
+  if [ -s "$LOG" ]; then tail -2 "$LOG" | sed 's/^/    /'; else echo "    (cloudflared 출력이 비어 있음 — 디스크가 가득 찼는지 확인: df -h . /tmp)"; fi
   kill "$CF_PID" 2>/dev/null; wait "$CF_PID" 2>/dev/null
   rm -f "$LOG"; LOG=""; CF_PID=""
   [ "$attempt" != "3" ] && sleep 3

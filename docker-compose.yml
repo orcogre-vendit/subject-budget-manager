@@ -8,6 +8,7 @@ services:
     environment:
       - DATABASE_URL=file:/app/data/app.db
       - UPLOAD_DIR=/app/uploads
+      - TZ=Asia/Seoul # 서류 작성일·표시 시각을 KST 로 (기본 UTC 면 오전 9시 전 생성 서류의 날짜가 하루 전으로 찍힘)
     volumes:
       - ./data:/app/data # SQLite DB 영속
       - ./uploads:/app/uploads # 증빙 파일 영속
