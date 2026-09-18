@@ -7,6 +7,7 @@ import { parseRcmsExport, parseRcmsBudgetPath, type RcmsRow } from "@/lib/rcms/p
 import { autoMatch } from "@/lib/rcms/match";
 import { txInclude } from "@/lib/rcms/db";
 import { nextSeqNo } from "@/lib/seq";
+import { findOrCreateItem, resolveSubAndDetail } from "@/lib/categories";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -226,30 +227,12 @@ export async function unmatchRecord(fd: FormData): Promise<void> {
   if (yearId) await revalidateYears([yearId]);
 }
 
-/** RCMS 비목정보로 우리 비목/세목/세세목을 찾거나 등록 */
+/** RCMS 비목정보로 우리 비목/세목/세세목을 찾거나 등록. 이름은 정규화해 비교하므로 RCMS 표기가 조금 달라도 표준 항목에 붙는다 */
 async function resolveBudget(path: string | null) {
   const { item, sub, detail } = parseRcmsBudgetPath(path);
   if (!item) return { budgetItemId: null, budgetSubItemId: null, budgetDetailItemId: null };
-  const bi = await prisma.budgetItem.upsert({ where: { name: item }, update: {}, create: { name: item, sortOrder: 99 } });
-  let budgetSubItemId: number | null = null;
-  let budgetDetailItemId: number | null = null;
-  if (sub) {
-    const s = await prisma.budgetSubItem.upsert({
-      where: { budgetItemId_name: { budgetItemId: bi.id, name: sub } },
-      update: {},
-      create: { budgetItemId: bi.id, name: sub },
-    });
-    budgetSubItemId = s.id;
-    if (detail) {
-      const d = await prisma.budgetDetailItem.upsert({
-        where: { budgetSubItemId_name: { budgetSubItemId: s.id, name: detail } },
-        update: {},
-        create: { budgetSubItemId: s.id, name: detail },
-      });
-      budgetDetailItemId = d.id;
-    }
-  }
-  return { budgetItemId: bi.id, budgetSubItemId, budgetDetailItemId };
+  const bi = await findOrCreateItem(prisma, item, 99);
+  return resolveSubAndDetail(prisma, bi.id, sub, detail);
 }
 
 /** 품의 없이 RCMS 에만 있는 건 → 장부 거래를 만들어 연결 (수동 입력 대체) */

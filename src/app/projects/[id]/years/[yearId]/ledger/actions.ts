@@ -17,6 +17,7 @@ import { normalizeFileName } from "@/lib/uploadRules";
 import { pickEvidenceFileName, type NamingContext } from "@/lib/evidenceName";
 import { nextSeqNo } from "@/lib/seq";
 import { vatOf, lineAmount, normalizeUnitPrice } from "@/lib/money";
+import { resolveSubAndDetail } from "@/lib/categories";
 import { buildDocContext, docInclude, loadInspectionPhotos } from "@/lib/documents/context";
 import { renderPurchaseRequest } from "@/lib/templates/purchaseRequest";
 import {
@@ -138,29 +139,10 @@ function deriveMoney(raw: Record<string, string>, items: ItemIn[]) {
   return { amount, vatRate, vatAmount };
 }
 
-/** 비목 아래로 세목·세세목을 이름으로 찾거나 새로 등록(find-or-create) */
+/** 비목 아래로 세목·세세목을 이름으로 찾거나 새로 등록(find-or-create). 띄어쓰기·가운뎃점 차이는 기존 항목으로 맞춘다 */
 async function resolveCategory(raw: Record<string, string>) {
   const budgetItemId = raw.budgetItemId ? Number(raw.budgetItemId) : null;
-  let budgetSubItemId: number | null = null;
-  let budgetDetailItemId: number | null = null;
-
-  if (budgetItemId && raw.budgetSubItemName) {
-    const sub = await prisma.budgetSubItem.upsert({
-      where: { budgetItemId_name: { budgetItemId, name: raw.budgetSubItemName } },
-      update: {},
-      create: { budgetItemId, name: raw.budgetSubItemName },
-    });
-    budgetSubItemId = sub.id;
-    if (raw.budgetDetailItemName) {
-      const det = await prisma.budgetDetailItem.upsert({
-        where: { budgetSubItemId_name: { budgetSubItemId, name: raw.budgetDetailItemName } },
-        update: {},
-        create: { budgetSubItemId, name: raw.budgetDetailItemName },
-      });
-      budgetDetailItemId = det.id;
-    }
-  }
-  return { budgetItemId, budgetSubItemId, budgetDetailItemId };
+  return resolveSubAndDetail(prisma, budgetItemId, raw.budgetSubItemName, raw.budgetDetailItemName);
 }
 
 const toDate = (s: string) => (s ? new Date(s) : null);
