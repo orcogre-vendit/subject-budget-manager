@@ -11,13 +11,19 @@ import {
   type ProjectField,
 } from "./fields";
 
-/** 주어진 조건의 거래에 속한 첨부 파일을 디스크에서 제거 (DB는 cascade로 삭제됨) */
-async function purgeAttachmentFiles(where: Prisma.AttachmentWhereInput) {
-  const atts = await prisma.attachment.findMany({
-    where,
-    select: { storedName: true },
-  });
-  await Promise.all(atts.map((a) => deleteUpload(a.storedName)));
+/**
+ * 주어진 조건의 거래에 딸린 디스크 파일(증빙 첨부 + 생성 PDF) 경로 — UPLOAD_DIR 기준 상대경로.
+ * DB 레코드는 cascade 로 함께 지워지므로 삭제 전에 모아 두고, 삭제가 성공한 뒤 deleteUpload 로 지운다.
+ */
+async function collectTransactionFiles(where: Prisma.TransactionWhereInput): Promise<string[]> {
+  const [atts, docs] = await Promise.all([
+    prisma.attachment.findMany({ where: { transaction: where }, select: { storedName: true } }),
+    prisma.generatedDocument.findMany({
+      where: { transaction: where, filePath: { not: null } },
+      select: { filePath: true },
+    }),
+  ]);
+  return [...atts.map((a) => a.storedName), ...docs.map((d) => d.filePath!)];
 }
 
 export type FormState = {
@@ -138,8 +144,10 @@ export async function updateProject(
 export async function deleteProject(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
   if (!id) return;
-  await purgeAttachmentFiles({ transaction: { projectYear: { projectId: id } } });
+  // 첨부·생성PDF 파일도 디스크에서 제거 (DB 레코드는 cascade)
+  const files = await collectTransactionFiles({ projectYear: { projectId: id } });
   await prisma.project.delete({ where: { id } });
+  await Promise.all(files.map(deleteUpload));
   revalidatePath("/projects");
   redirect("/projects");
 }
@@ -215,7 +223,9 @@ export async function deleteProjectYear(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
   const projectId = Number(formData.get("projectId"));
   if (!id) return;
-  await purgeAttachmentFiles({ transaction: { projectYearId: id } });
+  // 첨부·생성PDF 파일도 디스크에서 제거 (DB 레코드는 cascade)
+  const files = await collectTransactionFiles({ projectYearId: id });
   await prisma.projectYear.delete({ where: { id } });
+  await Promise.all(files.map(deleteUpload));
   if (projectId) revalidatePath(`/projects/${projectId}`);
 }
