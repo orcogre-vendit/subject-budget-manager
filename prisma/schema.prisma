@@ -233,8 +233,8 @@ model TransactionItem {
   name          String // 품목명
   spec          String? // 규격
   quantity      Int         @default(1)
-  unitPrice     Int         @default(0) // 단가(원)
-  amount        Int         @default(0) // quantity * unitPrice (정수 연산)
+  unitPrice     String      @default("0") // 단가(원) — 소수 2자리까지의 십진 문자열(예 "33333.33"). 부동소수점 금지 규칙에 따라 TEXT 로 저장하고 계산은 정수 스케일링(src/lib/money.ts)
+  amount        Int         @default(0) // quantity × unitPrice 를 원 단위로 반올림 (정수 연산)
   sortOrder     Int         @default(0)
 
   @@index([transactionId])

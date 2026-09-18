@@ -21,9 +21,35 @@ export function splitTotal(total: number, ratePercent: number): { supply: number
   return { supply, vat: t - supply };
 }
 
-/** 품목 금액 = 수량 × 단가 (정수) */
-export function lineAmount(quantity: number, unitPrice: number): number {
-  return Math.trunc(quantity) * Math.trunc(unitPrice);
+/**
+ * 단가 입력 정규화 — 콤마·공백 제거, 소수 2자리까지 허용, 끝의 0 제거.
+ * "1,234.50" → "1234.5", "81000" → "81000", "" → "0". 형식이 틀리면 null (예: "12.345", "abc").
+ */
+export function normalizeUnitPrice(input: string): string | null {
+  const s = String(input ?? "").replace(/[,\s]/g, "");
+  if (s === "") return "0";
+  if (!/^\d+(\.\d{0,2})?$/.test(s)) return null;
+  const [rawInt, rawFrac = ""] = s.split(".");
+  const int = rawInt.replace(/^0+(?=\d)/, "");
+  const frac = rawFrac.replace(/0+$/, "");
+  return frac ? `${int}.${frac}` : int;
+}
+
+/** 품목 금액 = 수량 × 단가(십진 문자열) 를 원 단위로 반올림. 전(1/100원) 단위 정수(BigInt) 연산만 사용 */
+export function lineAmount(quantity: number, unitPrice: string): number {
+  const norm = normalizeUnitPrice(unitPrice) ?? "0";
+  const [int, frac = ""] = norm.split(".");
+  const cents = BigInt(int) * BigInt(100) + BigInt((frac + "00").slice(0, 2));
+  const q = BigInt(Math.max(0, Math.trunc(quantity)));
+  return Number((cents * q + BigInt(50)) / BigInt(100));
+}
+
+/** 단가 표시용 — "33333.33" → "33,333.33", "81000" → "81,000" */
+export function fmtUnitPrice(unitPrice: string): string {
+  const norm = normalizeUnitPrice(unitPrice) ?? "0";
+  const [int, frac] = norm.split(".");
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return frac ? `${grouped}.${frac}` : grouped;
 }
 
 /** 원 → 천원 (반올림). 대조표·슬랙 게시처럼 천원 단위가 명시된 곳에서만 사용 */
