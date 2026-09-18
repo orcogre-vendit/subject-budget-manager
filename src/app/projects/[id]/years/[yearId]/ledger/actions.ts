@@ -16,7 +16,7 @@ import {
 import { normalizeFileName } from "@/lib/uploadRules";
 import { pickEvidenceFileName, type NamingContext } from "@/lib/evidenceName";
 import { nextSeqNo } from "@/lib/seq";
-import { vatOf, lineAmount } from "@/lib/money";
+import { vatOf, lineAmount, normalizeUnitPrice } from "@/lib/money";
 import { buildDocContext, docInclude, loadInspectionPhotos } from "@/lib/documents/context";
 import { renderPurchaseRequest } from "@/lib/templates/purchaseRequest";
 import {
@@ -68,7 +68,7 @@ type ItemIn = {
   name: string;
   spec: string | null;
   quantity: number;
-  unitPrice: number;
+  unitPrice: string; // 십진 문자열 (소수 2자리까지)
   amount: number;
 };
 
@@ -87,11 +87,11 @@ function parseItems(raw: string): { items: ItemIn[]; error?: string } {
     const name = String(r.name ?? "").trim();
     if (!name) continue;
     const quantity = Math.trunc(Number(r.quantity));
-    const unitPrice = Math.trunc(Number(String(r.unitPrice ?? "").replace(/,/g, "")));
+    const unitPrice = normalizeUnitPrice(String(r.unitPrice ?? ""));
     if (!Number.isFinite(quantity) || quantity < 1)
       return { items: [], error: `'${name}' 수량은 1 이상이어야 합니다.` };
-    if (!Number.isFinite(unitPrice) || unitPrice < 0)
-      return { items: [], error: `'${name}' 단가가 올바르지 않습니다.` };
+    if (unitPrice === null)
+      return { items: [], error: `'${name}' 단가가 올바르지 않습니다. (숫자, 소수점 2자리까지)` };
     items.push({
       name,
       spec: String(r.spec ?? "").trim() || null,

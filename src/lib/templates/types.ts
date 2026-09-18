@@ -5,7 +5,7 @@ export type DocItem = {
   name: string;
   spec: string;
   quantity: number;
-  unitPrice: number;
+  unitPrice: string; // 십진 문자열(소수 2자리까지) — 표시는 fmtUnitPrice
   amount: number;
 };
 

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { lineAmount, normalizeUnitPrice } from "@/lib/money";
+
 export type ItemRow = { name: string; spec: string; quantity: string; unitPrice: string };
 type Row = ItemRow & { id: number };
 
@@ -9,25 +11,36 @@ type Row = ItemRow & { id: number };
 let rowSeq = 1;
 const mk = (r: ItemRow): Row => ({ ...r, id: rowSeq++ });
 
-const fmt = (digits: string) => (digits ? Number(digits).toLocaleString("ko-KR") : "");
-const digitsOf = (s: string) => s.replace(/\D/g, "");
+/** 입력 중인 단가 정리 — 숫자와 소수점 하나만, 소수 2자리까지. 끝의 "." 은 타이핑 중이므로 남긴다 */
+const cleanPrice = (s: string) => {
+  const t = s.replace(/[^\d.]/g, "");
+  const dot = t.indexOf(".");
+  if (dot < 0) return t;
+  return `${t.slice(0, dot)}.${t.slice(dot + 1).replace(/\./g, "").slice(0, 2)}`;
+};
+/** 표시용 — 정수부에 콤마, 소수부는 입력한 그대로 (예 "33333.3" → "33,333.3", "12." → "12.") */
+const showPrice = (clean: string) => {
+  if (!clean) return "";
+  const dot = clean.indexOf(".");
+  const int = (dot < 0 ? clean : clean.slice(0, dot)).replace(/^0+(?=\d)/, "") || "0";
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return dot < 0 ? grouped : `${grouped}.${clean.slice(dot + 1)}`;
+};
 const cell =
   "w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-slate-900";
 
 export const emptyRow = (): ItemRow => ({ name: "", spec: "", quantity: "1", unitPrice: "" });
 
-/** 초기 rows 로부터 정수 합계 (수량×단가) */
+/** 초기 rows 로부터 정수 합계(원) — 행마다 수량×단가를 원 단위로 반올림한 뒤 더한다 */
 export function itemsTotal(rows: ItemRow[]): number {
   return rows.reduce((s, r) => {
     if (!r.name.trim()) return s;
-    const q = Math.trunc(Number(r.quantity) || 0);
-    const u = Math.trunc(Number(digitsOf(r.unitPrice)) || 0);
-    return s + q * u;
+    return s + lineAmount(Number(r.quantity) || 0, r.unitPrice);
   }, 0);
 }
 
 /**
- * 거래 품목 편집기 — 품목명/규격/수량/단가 다건 입력.
+ * 거래 품목 편집기 — 품목명/규격/수량/단가 다건 입력. 단가는 소수 2자리까지(예: 33,333.33).
  * hidden input `items` 에 JSON 으로 직렬화하고, 합계가 바뀌면 onTotalChange 로 알린다.
  * 텍스트 입력은 비제어(defaultValue)로 둔다: 제어 입력은 한글 IME 조합 중 부모 리렌더와 겹치면 글자가 중복 입력될 수 있다.
  */
@@ -57,7 +70,7 @@ export default function ItemsEditor({
         name: r.name.trim(),
         spec: r.spec.trim(),
         quantity: Math.trunc(Number(r.quantity) || 0),
-        unitPrice: Math.trunc(Number(digitsOf(r.unitPrice)) || 0),
+        unitPrice: normalizeUnitPrice(r.unitPrice) ?? "0",
       })),
   );
 
@@ -66,7 +79,7 @@ export default function ItemsEditor({
       <input type="hidden" name="items" value={json} />
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-medium text-slate-700">
-          구매 품목 <span className="text-xs font-normal text-slate-400">(품의서·검수확인서에 표기, 입력 시 공급가액 자동 합산)</span>
+          구매 품목 <span className="text-xs font-normal text-slate-400">(품의서·검수확인서에 표기, 입력 시 공급가액 자동 합산 · 단가는 소수점 2자리까지)</span>
         </p>
         <button
           type="button"
@@ -91,8 +104,7 @@ export default function ItemsEditor({
           </thead>
           <tbody>
             {rows.map((r) => {
-              const amount =
-                Math.trunc(Number(r.quantity) || 0) * Math.trunc(Number(digitsOf(r.unitPrice)) || 0);
+              const amount = lineAmount(Number(r.quantity) || 0, r.unitPrice);
               return (
                 <tr key={r.id}>
                   <td className="px-1 py-1">
@@ -106,12 +118,12 @@ export default function ItemsEditor({
                   </td>
                   <td className="px-1 py-1">
                     <input
-                      inputMode="numeric"
-                      defaultValue={fmt(digitsOf(r.unitPrice))}
+                      inputMode="decimal"
+                      defaultValue={showPrice(cleanPrice(r.unitPrice))}
                       onInput={(e) => {
-                        const d = digitsOf(e.currentTarget.value);
-                        e.currentTarget.value = fmt(d);
-                        update(r.id, { unitPrice: d });
+                        const c = cleanPrice(e.currentTarget.value);
+                        e.currentTarget.value = showPrice(c);
+                        update(r.id, { unitPrice: c });
                       }}
                       placeholder="0"
                       className={cell}

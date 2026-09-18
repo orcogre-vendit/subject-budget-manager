@@ -1,6 +1,7 @@
 // 품의서 — flex 워크플로우 "__년 _월 _________ 품의서" 양식의 칸 순서대로 붙여넣기용 텍스트.
 // flex 양식 칸: 제목 / 목적 / 은행 / 계좌번호 / 지급액 / 예금주명 / 지급일자 / 비고 / 첨부파일(20MB 이하, 최대 30개)
 import { evidenceLabel } from "@/lib/evidence";
+import { fmtUnitPrice } from "@/lib/money";
 import { n, type DocContext } from "./types";
 
 const dash = (s: string) => (s && s !== "-" ? s : "-");
@@ -14,7 +15,7 @@ export function purchaseRequestTitle(c: DocContext): string {
 export function renderPurchaseRequest(c: DocContext): string {
   const isCard = c.paymentMethod.includes("카드");
   const itemLines = c.items.length
-    ? c.items.map((it) => ` - ${it.name}${it.spec ? ` (${it.spec})` : ""} ${n(it.quantity)}개 × ${n(it.unitPrice)}원 = ${n(it.amount)}원`)
+    ? c.items.map((it) => ` - ${it.name}${it.spec ? ` (${it.spec})` : ""} ${n(it.quantity)}개 × ${fmtUnitPrice(it.unitPrice)}원 = ${n(it.amount)}원`)
     : [` - ${c.itemSummary} ${n(c.supplyAmount)}원`];
   // 품의 시점에 flex 에 올리는 건 견적서뿐. 거래명세서·세금계산서·검수 사진은 구매 뒤 RCMS 증빙
   const quotes = c.attachments.filter((a) => a.code === "QUOTE");

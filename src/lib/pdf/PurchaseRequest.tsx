@@ -1,6 +1,7 @@
 // 품의서(구매의뢰서 겸용) PDF — 서버 전용(react-pdf)
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { PDF_FONT } from "./font";
+import { fmtUnitPrice } from "@/lib/money";
 import { n, type DocContext } from "@/lib/templates/types";
 
 const s = StyleSheet.create({
@@ -33,7 +34,7 @@ const s = StyleSheet.create({
 export default function PurchaseRequest({ ctx }: { ctx: DocContext }) {
   const rows = ctx.items.length
     ? ctx.items
-    : [{ name: ctx.itemSummary, spec: "", quantity: 1, unitPrice: ctx.supplyAmount, amount: ctx.supplyAmount }];
+    : [{ name: ctx.itemSummary, spec: "", quantity: 1, unitPrice: String(ctx.supplyAmount), amount: ctx.supplyAmount }];
   return (
     <Document title="구매의뢰서(품의서)" author="과제관리 시스템">
       <Page size="A4" style={s.page}>
@@ -58,7 +59,7 @@ export default function PurchaseRequest({ ctx }: { ctx: DocContext }) {
               <Text style={[s.td, s.cName]}>{it.name}</Text>
               <Text style={[s.td, s.cSpec]}>{it.spec || "-"}</Text>
               <Text style={[s.td, s.cQty]}>{n(it.quantity)}</Text>
-              <Text style={[s.td, s.cUnit]}>{n(it.unitPrice)}</Text>
+              <Text style={[s.td, s.cUnit]}>{fmtUnitPrice(it.unitPrice)}</Text>
               <Text style={[s.td, s.cAmt, s.last]}>{n(it.amount)}</Text>
             </View>
           ))}
