@@ -15,6 +15,7 @@ import {
   sameCategoryName,
 } from "../src/lib/budgetStandard";
 import { findItem, findOrCreateDetail, findOrCreateItem, findOrCreateSub, findSub } from "../src/lib/categories";
+import { renameAttachmentsFor } from "../src/lib/attachmentNames";
 
 const adapter = new PrismaBetterSqlite3({
   url: process.env.DATABASE_URL ?? "file:./dev.db",
@@ -281,8 +282,9 @@ async function retireLegacy() {
       where: { id: t.id },
       data: { budgetItemId: bi.id, budgetSubItemId: s?.id ?? null, budgetDetailItemId: d?.id ?? null },
     });
+    const renamed = await renameAttachmentsFor(prisma, t.id); // 파일명 규칙의 비목 부분을 새 비목으로
     console.log(
-      `  거래 #${t.id}: ${[item, sub, detail].filter(Boolean).join(" > ")} → ${[target.item, target.sub, target.detail].filter(Boolean).join(" > ")}`,
+      `  거래 #${t.id}: ${[item, sub, detail].filter(Boolean).join(" > ")} → ${[target.item, target.sub, target.detail].filter(Boolean).join(" > ")}${renamed ? ` (첨부 이름 ${renamed}건 갱신)` : ""}`,
     );
     moved++;
   }
@@ -339,10 +341,19 @@ async function retireLegacy() {
   console.log(`레거시 정리 — 거래 이동 ${moved}건, 세세목 삭제 ${delDetails}, 세목 삭제 ${delSubs}, 비목 삭제 ${delItems}`);
 }
 
+/** 첨부 표시 이름을 규칙과 대조해 어긋난 것만 고친다 — 분류 이동·거래처 변경이 언제 있었든 항상 규칙과 일치시킨다 */
+async function syncAttachmentNames() {
+  const txs = await prisma.transaction.findMany({ where: { attachments: { some: {} } }, select: { id: true } });
+  let changed = 0;
+  for (const t of txs) changed += await renameAttachmentsFor(prisma, t.id);
+  if (changed) console.log(`첨부 이름 규칙 동기화 — ${changed}건 갱신`);
+}
+
 async function main() {
   await seedStandardTree();
   await seedEvidence();
   await retireLegacy();
+  await syncAttachmentNames();
 
   const [bi, si, di, ev] = await Promise.all([
     prisma.budgetItem.count(),
