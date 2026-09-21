@@ -75,10 +75,19 @@ export type Checklist = {
   ok: boolean;
 };
 
+/**
+ * 포괄 요건을 충족시키는 구체 증빙. 예: "집행영수증(RECEIPT)" 요건은 세금계산서·카드매출전표·계좌이체증명 중
+ * 하나가 첨부돼 있으면 충족 — 사용자는 구체 종류로 올리므로 포괄 코드로는 매칭되지 않던 문제 대응.
+ */
+export const EVIDENCE_EQUIVALENTS: Record<string, string[]> = {
+  RECEIPT: ["TAX_INVOICE", "CARD_SLIP", "TRANSFER_PROOF"],
+};
+
 /** 세목 증빙 요건 vs 첨부된 증빙 코드 → 충족 여부 평가 */
 export function evaluateEvidence(reqs: ReqRow[], attachedCodes: string[]): Checklist {
   const attached = new Set(attachedCodes);
-  const rows: ChecklistRow[] = reqs.map((r) => ({ ...r, met: attached.has(r.code) }));
+  const has = (code: string) => attached.has(code) || (EVIDENCE_EQUIVALENTS[code] ?? []).some((c) => attached.has(c));
+  const rows: ChecklistRow[] = reqs.map((r) => ({ ...r, met: has(r.code) }));
 
   const missing: string[] = [];
   for (const r of rows) {
