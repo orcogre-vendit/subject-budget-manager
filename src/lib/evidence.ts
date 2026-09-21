@@ -46,6 +46,14 @@ export const EVIDENCE_CODES: Record<string, string> = {
   OTHER: "기타",
 };
 
+/**
+ * 앱이 생성한 서류(GeneratedDocument.templateCode, PDF)가 그대로 증빙이 되는 경우 → 충족으로 치는 증빙 코드.
+ * 품의서(PURCHASE_REQUEST)는 flex 결재가 끝난 PDF 를 첨부해야 하므로 넣지 않는다.
+ */
+export const DOC_TEMPLATE_EVIDENCE: Record<string, string> = {
+  INSPECTION_CERT: "INSPECTION_CERT",
+};
+
 export function evidenceLabel(code?: string | null): string {
   if (!code) return "-";
   return EVIDENCE_CODES[code] ?? code;

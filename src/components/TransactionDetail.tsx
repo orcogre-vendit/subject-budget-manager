@@ -3,7 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ymd, won } from "@/lib/format";
 import { humanSize } from "@/lib/uploads";
-import { evaluateEvidence, evidenceLabel } from "@/lib/evidence";
+import { DOC_TEMPLATE_EVIDENCE, evaluateEvidence, evidenceLabel } from "@/lib/evidence";
 import { DEFAULT_INSTALL_LOCATION } from "@/lib/documents/context";
 import { documentFileName, DOC_FILE_LABELS } from "@/lib/evidenceName";
 import { downloadHref } from "@/lib/download";
@@ -100,11 +100,16 @@ export default function TransactionDetail({
     ),
   };
 
-  // 증빙 체크리스트 — 세목 요건 vs 첨부된 evidenceCode
+  // 증빙 체크리스트 — 세목 요건 vs (첨부된 evidenceCode + 앱이 생성한 PDF 서류 중 그대로 증빙이 되는 것, 예: 검수확인서)
   const reqs = tx.budgetSubItem?.evidenceRequirements ?? [];
+  const attachmentCodes = tx.attachments.map((a) => a.evidenceCode).filter((c): c is string => !!c);
+  const docCodes = tx.documents
+    .filter((g) => g.format === "pdf" && DOC_TEMPLATE_EVIDENCE[g.templateCode])
+    .map((g) => DOC_TEMPLATE_EVIDENCE[g.templateCode]);
+  const metByDocOnly = new Set(docCodes.filter((c) => !attachmentCodes.includes(c)));
   const checklist = evaluateEvidence(
     reqs.map((r) => ({ code: r.code, label: r.label, requirement: r.requirement, groupKey: r.groupKey })),
-    tx.attachments.map((a) => a.evidenceCode).filter((c): c is string => !!c),
+    [...attachmentCodes, ...docCodes],
   );
   const requiredCodes = reqs.filter((r) => r.requirement !== "optional").map((r) => r.code);
 
@@ -174,6 +179,7 @@ export default function TransactionDetail({
                 <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${REQ_CLS[r.requirement] ?? REQ_CLS.optional}`}>
                   {REQ_LABEL[r.requirement] ?? r.requirement}
                 </span>
+                {metByDocOnly.has(r.code) && <span className="text-xs text-slate-400">앱에서 생성한 서류로 충족</span>}
               </li>
             ))}
           </ul>

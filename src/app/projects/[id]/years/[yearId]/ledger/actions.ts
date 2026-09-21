@@ -18,6 +18,7 @@ import { pickEvidenceFileName, type NamingContext } from "@/lib/evidenceName";
 import { nextSeqNo } from "@/lib/seq";
 import { vatOf, lineAmount, normalizeUnitPrice } from "@/lib/money";
 import { resolveSubAndDetail } from "@/lib/categories";
+import { renameAttachmentsFor } from "@/lib/attachmentNames";
 import { buildDocContext, docInclude, loadInspectionPhotos } from "@/lib/documents/context";
 import { renderPurchaseRequest } from "@/lib/templates/purchaseRequest";
 import {
@@ -221,23 +222,6 @@ async function storeAttachment(transactionId: number, ctx: StoreContext, file: F
   });
 }
 
-/** 거래처·비목이 바뀌면 기존 첨부 이름도 규칙대로 다시 붙인다 (첨부 id 순, 같은 종류는 -2, -3 …) */
-async function renameAttachmentsFor(transactionId: number) {
-  const ctx = await namingContext(transactionId);
-  const atts = await prisma.attachment.findMany({
-    where: { transactionId },
-    select: { id: true, fileName: true, originalName: true, evidenceCode: true },
-    orderBy: { id: "asc" },
-  });
-  const taken = new Set<string>();
-  for (const a of atts) {
-    const originalName = a.originalName ?? normalizeFileName(a.fileName);
-    const fileName = pickEvidenceFileName(ctx, a.evidenceCode, originalName, taken);
-    if (fileName !== a.fileName || !a.originalName)
-      await prisma.attachment.update({ where: { id: a.id }, data: { fileName, originalName } });
-  }
-}
-
 /** 거래 추가 폼의 증빙 줄 — evidenceCode[i] 와 evidenceFile[i] 는 같은 순서로 들어온다. 파일 없는 줄은 무시 */
 function pickEvidenceRows(fd: FormData): { file: File; code: string | null }[] {
   const files = fd.getAll("evidenceFile");
@@ -318,7 +302,7 @@ export async function updateTransaction(
       items: { deleteMany: {}, create: itemRows(parsed.items) },
     },
   });
-  await renameAttachmentsFor(id); // 거래처·비목 변경을 첨부 파일명에 반영
+  await renameAttachmentsFor(prisma, id); // 거래처·비목 변경을 첨부 파일명에 반영
   revalidatePath(ledgerPath(projectId, projectYearId));
   revalidatePath(`/projects/${projectId}`);
   redirect(`${ledgerPath(projectId, projectYearId)}?tx=${id}#detail`); // 원장으로 돌아가되 이 거래를 열어둔다
