@@ -1,15 +1,16 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import type { FormState } from "@/app/projects/actions";
 import type { ReqRow } from "@/lib/evidence";
 import MoneyInput from "@/components/MoneyInput";
 import ItemsEditor, { itemsTotal, type ItemRow } from "@/components/ItemsEditor";
-import EvidenceDropInput from "@/components/EvidenceDropInput";
+import EvidenceAiPanel from "@/components/EvidenceAiPanel";
 import EvidenceReqPanel from "@/components/EvidenceReqPanel";
 import { vatOf, splitTotal } from "@/lib/money";
 import type { NamingContext } from "@/lib/evidenceName";
+import type { EvidenceDraft } from "@/lib/gemini/evidenceTypes";
 
 /** 설치장소 기본값 — 서버(context.ts)와 동일 문자열. context.ts 는 fs 를 import 하므로 클라이언트에서 가져오지 않는다 */
 const DEFAULT_INSTALL_LOCATION = "주식회사 벤디트 기업부설연구소내";
@@ -139,18 +140,20 @@ function parseInitialItems(json?: string): ItemRow[] {
 const digits = (s?: string) => Number((s ?? "").replace(/\D/g, "")) || 0;
 
 /** 폼 본문 — 액션 결과마다 부모가 key 를 바꿔 리마운트하므로 상태가 항상 올바른 초기값에서 시작 */
-function TxFields({
+function EntryFields({
   v,
   fe,
   budgetTree,
   withEvidence,
-  nextSeqNo,
+  attachedCodes,
+  onNamingChange,
 }: {
   v: Values;
   fe?: Record<string, string>;
   budgetTree: BudgetTree;
   withEvidence?: boolean;
-  nextSeqNo?: number | null;
+  attachedCodes: string[];
+  onNamingChange: (next: { vendor?: string; itemName?: string | null }) => void;
 }) {
   const err = (k: string) => fe?.[k];
   const initialItems = parseInitialItems(v.items);
@@ -165,13 +168,7 @@ function TxFields({
   const [mode, setMode] = useState<"supply" | "total">("supply");
   const [totalInput, setTotalInput] = useState(0);
   const [sub, setSub] = useState<BudgetSub | undefined>(() => findSub(budgetTree, v.budgetItemId ?? "", v.budgetSubItemName ?? ""));
-  const [itemName, setItemName] = useState<string | null>(
-    () => budgetTree.find((i) => String(i.id) === (v.budgetItemId ?? ""))?.name ?? null,
-  );
   const [vendorName, setVendorName] = useState(v.vendor ?? "");
-  const [attachedCodes, setAttachedCodes] = useState<string[]>([]);
-  /** 첨부 파일명 미리보기용 문맥 — 저장되면 "연번-종류-거래처-비목.ext" 로 이름이 붙는다 */
-  const naming: NamingContext = { seqNo: nextSeqNo ?? null, vendor: vendorName || null, budgetItem: itemName };
 
   const rate = Math.trunc(Number(vatRate) || 0);
   const isIn = direction === "IN";
@@ -249,7 +246,10 @@ function TxFields({
         budgetTree={budgetTree}
         initial={v}
         error={err("budgetItemId")}
-        onCategoryChange={({ itemName: n, sub: s }) => { setItemName(n); setSub(s); }}
+        onCategoryChange={({ itemName: n, sub: s }) => {
+          setSub(s);
+          onNamingChange({ itemName: n });
+        }}
       />
 
       {!isIn && (
@@ -314,14 +314,18 @@ function TxFields({
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
               <Label text="거래처" />
-              <input name="vendor" defaultValue={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="예: (주)디바이스마트" className={inputCls} />
+              <input name="vendor" defaultValue={vendorName} onChange={(e) => {
+                setVendorName(e.target.value);
+                onNamingChange({ vendor: e.target.value });
+              }} placeholder="예: (주)디바이스마트" className={inputCls} />
             </div>
             <div><Label text="은행명" /><input name="vendorBank" defaultValue={v.vendorBank ?? ""} className={inputCls} /></div>
             <div><Label text="계좌번호" /><input name="vendorAccount" defaultValue={v.vendorAccount ?? ""} className={inputCls} /></div>
             <div><Label text="예금주" /><input name="vendorHolder" defaultValue={v.vendorHolder ?? ""} className={inputCls} /></div>
             <div>
               <Label text="결제수단" />
-              <select name="paymentMethod" defaultValue={v.paymentMethod ?? "RCMS 계좌이체"} className={inputCls}>
+              <select name="paymentMethod" defaultValue={v.paymentMethod ?? (withEvidence ? "" : "RCMS 계좌이체")} className={inputCls}>
+                <option value="">선택</option>
                 <option value="RCMS 계좌이체">RCMS 계좌이체</option>
                 <option value="연구비카드">연구비카드</option>
               </select>
@@ -342,17 +346,7 @@ function TxFields({
           </div>
 
           {withEvidence && (
-            <>
-              <EvidenceReqPanel subName={sub?.name} reqs={sub?.evidenceRequirements ?? []} attachedCodes={attachedCodes} />
-              <EvidenceDropInput
-                // 품의 시점엔 견적서만 올리면 되므로 견적서를 맨 앞에
-                suggestedCodes={["QUOTE", ...(sub?.evidenceRequirements ?? []).map((r) => r.code).filter((c) => c !== "QUOTE")]}
-                error={err("evidenceFile")}
-                hint="(품의 단계엔 견적서만 · 거래명세서·세금계산서·검수 사진은 구매 뒤 수정 화면에서)"
-                onCodesChange={setAttachedCodes}
-                naming={naming}
-              />
-            </>
+            <EvidenceReqPanel subName={sub?.name} reqs={sub?.evidenceRequirements ?? []} attachedCodes={attachedCodes} />
           )}
         </>
       )}
@@ -361,6 +355,109 @@ function TxFields({
         <Label text="적요" />
         <input type="text" name="description" defaultValue={v.description ?? ""}
           placeholder="예: 사무용품-오피스디포_토너외" className={inputCls} />
+      </div>
+    </>
+  );
+}
+
+/** 증빙 선택은 유지한 채 AI 초안으로 입력 필드만 다시 마운트한다. */
+function TxFields({
+  v,
+  fe,
+  budgetTree,
+  withEvidence,
+  nextSeqNo,
+  projectYearId,
+}: {
+  v: Values;
+  fe?: Record<string, string>;
+  budgetTree: BudgetTree;
+  withEvidence?: boolean;
+  nextSeqNo?: number | null;
+  projectYearId?: number;
+}) {
+  const [values, setValues] = useState(v);
+  const [revision, setRevision] = useState(0);
+  const [attachedCodes, setAttachedCodes] = useState<string[]>([]);
+  const [namingVendor, setNamingVendor] = useState(v.vendor ?? "");
+  const [namingItem, setNamingItem] = useState<string | null>(
+    budgetTree.find((item) => String(item.id) === (v.budgetItemId ?? ""))?.name ?? null,
+  );
+  const fieldsRef = useRef<HTMLDivElement>(null);
+
+  const applyDraft = (draft: EvidenceDraft) => {
+    const budgetItem = budgetTree.find((item) => item.name === draft.budgetItemName);
+    const form = fieldsRef.current?.closest("form");
+    const current = form
+      ? Object.fromEntries([...new FormData(form)].filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+      : values;
+    const next: Values = { ...current, direction: "OUT", status: current.status || "신청" };
+    const put = (key: string, value: string) => {
+      if (value.trim() !== "") next[key] = value;
+    };
+
+    put("date", draft.date);
+    put("vendor", draft.vendor);
+    put("paymentMethod", draft.paymentMethod);
+    if (draft.supplyAmount > 0) next.amount = String(draft.supplyAmount);
+    if (draft.supplyAmount > 0 || draft.totalAmount > 0) {
+      next.vatRate = String(draft.vatRate);
+      next.vatAmount = String(draft.vatAmount);
+    }
+    put("description", draft.description);
+    put("purpose", draft.purpose);
+    put("installLocation", draft.installLocation);
+    if (budgetItem) {
+      const budgetSub = budgetItem.subItems.find((sub) => sub.name === draft.budgetSubItemName);
+      const budgetDetail = budgetSub?.detailItems.find((detail) => detail.name === draft.budgetDetailItemName);
+      next.budgetItemId = String(budgetItem.id);
+      next.budgetSubItemName = budgetSub?.name ?? "";
+      next.budgetDetailItemName = budgetDetail?.name ?? "";
+    }
+    if (draft.items.length) {
+      next.items = JSON.stringify(draft.items.map((item) => ({
+        name: item.name,
+        spec: item.spec,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      })));
+    }
+    setValues(next);
+    setNamingVendor(next.vendor ?? "");
+    setNamingItem(budgetTree.find((item) => String(item.id) === (next.budgetItemId ?? ""))?.name ?? null);
+    setRevision((current) => current + 1);
+  };
+
+  const naming: NamingContext = {
+    seqNo: nextSeqNo ?? null,
+    vendor: namingVendor || null,
+    budgetItem: namingItem,
+  };
+
+  return (
+    <>
+      {withEvidence && projectYearId && (
+        <EvidenceAiPanel
+          projectYearId={projectYearId}
+          naming={naming}
+          onCodesChange={setAttachedCodes}
+          onApply={applyDraft}
+          error={fe?.evidenceFile}
+        />
+      )}
+      <div ref={fieldsRef}>
+        <EntryFields
+          key={revision}
+          v={values}
+          fe={fe}
+          budgetTree={budgetTree}
+          withEvidence={withEvidence}
+          attachedCodes={attachedCodes}
+          onNamingChange={(next) => {
+            if (next.vendor !== undefined) setNamingVendor(next.vendor);
+            if (next.itemName !== undefined) setNamingItem(next.itemName);
+          }}
+        />
       </div>
     </>
   );
@@ -407,6 +504,7 @@ export default function TransactionForm({
         budgetTree={budgetTree}
         withEvidence={withEvidence}
         nextSeqNo={nextSeqNo}
+        projectYearId={Number(hidden.projectYearId) || undefined}
       />
 
       <div className="mt-5 flex items-center gap-3">
