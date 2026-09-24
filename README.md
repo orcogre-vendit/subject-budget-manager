@@ -65,6 +65,8 @@ docker pull ghcr.io/orcogre-vendit/subject-budget-manager:latest
 | `DATABASE_URL` | `file:/app/data/app.db` | SQLite 경로(볼륨) |
 | `UPLOAD_DIR` | `/app/uploads` | 증빙 저장 경로(볼륨) |
 | `PORT` | `3000` | 포트 |
+| `GEMINI_API_KEY` | - | 증빙 자동입력용 Gemini API 키 (`.env.gemini`, 커밋 금지) |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | 증빙 PDF·OCR 분석 모델 |
 
 > Vercel은 서버리스 파일시스템이 임시·읽기전용이라 로컬 SQLite·파일 업로드와 맞지 않습니다. 이 앱은 영속 디스크가 있는 서버(개인 서버/Fly.io/Railway 등)에 self-host 하는 구성입니다.
 

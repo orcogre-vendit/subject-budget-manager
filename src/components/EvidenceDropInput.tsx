@@ -6,7 +6,7 @@ import { ALLOWED_EXT, MAX_UPLOAD_BYTES, extOf, normalizeFileName } from "@/lib/u
 import { pickEvidenceFileName, type NamingContext } from "@/lib/evidenceName";
 
 /** name 은 정규화된 표시용 파일명(서버도 같은 규칙으로 저장). file 은 원본 File */
-type Picked = { id: number; file: File; name: string; code: string; problem: string | null };
+export type PickedEvidence = { id: number; file: File; name: string; code: string; problem: string | null };
 
 /** 파일명으로 증빙 유형 추측 — 순서대로 첫 매치. 못 맞히면 빈 값(사용자가 고름) */
 const NAME_RULES: [RegExp, string][] = [
@@ -46,7 +46,7 @@ function problemOf(name: string, size: number): string | null {
 }
 
 /** 제출될(규칙 통과 + 유형 선택된) 증빙 코드 목록 — 부모의 요건 체크에 쓴다 */
-const codesOf = (list: Picked[]) => list.filter((p) => !p.problem && p.code).map((p) => p.code);
+const codesOf = (list: PickedEvidence[]) => list.filter((p) => !p.problem && p.code).map((p) => p.code);
 
 const human = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
 
@@ -61,6 +61,7 @@ export default function EvidenceDropInput({
   title = "증빙 첨부",
   hint,
   onCodesChange,
+  onSelectionChange,
   naming,
 }: {
   suggestedCodes?: string[];
@@ -69,10 +70,12 @@ export default function EvidenceDropInput({
   hint?: string;
   /** 제출될 증빙 코드가 바뀔 때마다 알림 (요건 충족 표시용) */
   onCodesChange?: (codes: string[]) => void;
+  /** AI 분석 등에서 현재 선택 파일을 사용할 때 호출된다. 파일은 아직 서버에 저장되지 않은 상태다. */
+  onSelectionChange?: (picked: PickedEvidence[]) => void;
   /** 저장 시 붙을 파일명 미리보기 문맥. taken 은 이미 있는 첨부 이름(중복 번호 계산용) */
   naming?: NamingContext & { taken?: string[] };
 }) {
-  const [picked, setPicked] = useState<Picked[]>([]);
+  const [picked, setPicked] = useState<PickedEvidence[]>([]);
   const [over, setOver] = useState(false);
   const seq = useRef(0);
   const browseRef = useRef<HTMLInputElement>(null);
@@ -80,12 +83,13 @@ export default function EvidenceDropInput({
   const suggested = suggestedCodes.filter((c) => EVIDENCE_CODES[c]);
   const others = Object.keys(EVIDENCE_CODES).filter((c) => !suggested.includes(c));
 
-  const commit = (next: Picked[]) => {
+  const commit = (next: PickedEvidence[]) => {
     setPicked(next);
     onCodesChange?.(codesOf(next));
+    onSelectionChange?.(next);
   };
   const add = (files: FileList | File[]) => {
-    const next: Picked[] = [...files]
+    const next: PickedEvidence[] = [...files]
       .filter((f) => f.size > 0)
       .map((f) => {
         const name = normalizeFileName(f.name);

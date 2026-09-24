@@ -3,6 +3,9 @@ services:
   app:
     image: ghcr.io/orcogre-vendit/subject-budget-manager:latest
     # 로컬 소스로 직접 빌드하려면 위 image 줄을 지우고: build: .
+    env_file:
+      - path: .env.gemini
+        required: false
     ports:
       - "3000:3000"
     environment:
