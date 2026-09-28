@@ -7,6 +7,7 @@ import TransactionForm from "@/components/TransactionForm";
 import TransactionDetail, { txDetailInclude, loadBudgetTree } from "@/components/TransactionDetail";
 import ClickableRow from "@/components/ClickableRow";
 import DeleteButton from "@/components/DeleteButton";
+import ShareTransactionLink from "@/components/ShareTransactionLink";
 import { createTransaction, deleteTransaction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -188,7 +189,7 @@ export default async function LedgerPage({
       ) : (
         <>
         <div className="mt-3 hidden max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
-          <table className="min-w-[960px] w-full table-fixed text-sm">
+          <table className="min-w-[990px] w-full table-fixed text-sm">
             <colgroup>
               <col className="w-[50px]" />
               <col className="w-[120px]" />
@@ -197,7 +198,7 @@ export default async function LedgerPage({
               <col />
               <col className="w-[80px]" />
               <col className="w-[150px]" />
-              <col className="w-[100px]" />
+              <col className="w-[130px]" />
             </colgroup>
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
@@ -285,6 +286,11 @@ export default async function LedgerPage({
                         <Link href={detailHref(t.id)} className="text-xs font-medium text-slate-600 hover:underline">
                           열기
                         </Link>
+                        <ShareTransactionLink
+                          href={detailHref(t.id)}
+                          title={`${year.project.name} · No. ${seqLabel(t.seqNo)} ${t.description ?? t.vendor ?? "거래내역"}`}
+                          compact
+                        />
                         <DeleteButton
                           action={deleteTransaction}
                           id={t.id}
@@ -330,6 +336,11 @@ export default async function LedgerPage({
                 </Link>
                 <div className="mt-3 flex items-center gap-4 border-t border-slate-100 pt-3">
                   <Link href={detailHref(t.id)} className="text-xs font-semibold text-slate-700">상세 열기</Link>
+                  <ShareTransactionLink
+                    href={detailHref(t.id)}
+                    title={`${year.project.name} · No. ${seqLabel(t.seqNo)} ${t.description ?? t.vendor ?? "거래내역"}`}
+                    compact
+                  />
                   <DeleteButton action={deleteTransaction} id={t.id} extra={hidden} confirmText="이 거래를 삭제하시겠습니까?" />
                 </div>
               </article>
@@ -348,9 +359,15 @@ export default async function LedgerPage({
                 <span className="font-mono text-slate-400">No. {seqLabel(detail.seqNo)}</span>
                 <span className="ml-2">{detail.description ?? detail.vendor ?? "거래 상세"}</span>
               </h2>
-              <Link href={ledgerHref} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">
-                ✕ 닫고 새 거래 추가
-              </Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <ShareTransactionLink
+                  href={detailHref(detail.id)}
+                  title={`${year.project.name} · No. ${seqLabel(detail.seqNo)} ${detail.description ?? detail.vendor ?? "거래내역"}`}
+                />
+                <Link href={ledgerHref} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                  ✕ 닫고 새 거래 추가
+                </Link>
+              </div>
             </div>
             <div className="mt-2">
               <TransactionDetail tx={detail} projectId={projectId} projectYearId={projectYearId} budgetTree={budgetTree} cancelHref={ledgerHref} />
