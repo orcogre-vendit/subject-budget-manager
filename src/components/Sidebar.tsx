@@ -15,12 +15,12 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-60 shrink-0 border-r border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-5 py-5">
+    <aside className="w-full shrink-0 border-b border-slate-200 bg-white md:w-60 md:border-r md:border-b-0">
+      <div className="border-b border-slate-200 px-4 py-3 md:px-5 md:py-5">
         <p className="text-base font-bold text-slate-900">과제관리 시스템</p>
-        <p className="mt-0.5 text-xs text-slate-500">예산집행 관리</p>
+        <p className="mt-0.5 hidden text-xs text-slate-500 md:block">예산집행 관리</p>
       </div>
-      <nav className="flex flex-col gap-0.5 p-3">
+      <nav className="flex gap-1 overflow-x-auto p-2 md:flex-col md:gap-0.5 md:p-3">
         {NAV.map((item) => {
           const active =
             item.href === "/"
@@ -30,7 +30,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors md:gap-2.5 ${
                 active
                   ? "bg-slate-900 text-white"
                   : "text-slate-600 hover:bg-slate-100"

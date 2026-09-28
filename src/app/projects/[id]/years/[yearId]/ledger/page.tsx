@@ -77,14 +77,14 @@ export default async function LedgerPage({
   const hidden = { projectId, projectYearId };
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto min-w-0 w-full max-w-6xl">
       <Link
         href={`/projects/${projectId}`}
         className="text-sm text-slate-400 hover:text-slate-700"
       >
         ← {year.project.name}
       </Link>
-      <h1 className="mt-2 text-2xl font-bold text-slate-900">
+      <h1 className="mt-2 break-keep text-2xl font-bold text-slate-900">
         집행 원장 — {year.yearNo}년차
         {year.label ? (
           <span className="ml-2 text-base font-normal text-slate-400">
@@ -102,7 +102,7 @@ export default async function LedgerPage({
       )}
 
       {/* 요약 카드 */}
-      <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-xs text-slate-500">편성예산</p>
           <p className="mt-1 text-lg font-bold text-slate-900">
@@ -130,7 +130,7 @@ export default async function LedgerPage({
 
       {/* 비목별 잔액 */}
       {byItem.size > 0 && (
-        <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <div className="mt-5 max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
@@ -186,8 +186,19 @@ export default async function LedgerPage({
           집행 내역이 없습니다. 아래에서 거래를 입력하세요.
         </p>
       ) : (
-        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
+        <>
+        <div className="mt-3 hidden max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
+          <table className="min-w-[960px] w-full table-fixed text-sm">
+            <colgroup>
+              <col className="w-[50px]" />
+              <col className="w-[120px]" />
+              <col className="w-[80px]" />
+              <col className="w-[260px]" />
+              <col />
+              <col className="w-[80px]" />
+              <col className="w-[150px]" />
+              <col className="w-[100px]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
                 <th className="px-3 py-2.5 font-medium">No</th>
@@ -219,7 +230,7 @@ export default async function LedgerPage({
                     <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">
                       {ymd(t.date)}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="whitespace-nowrap px-3 py-2.5">
                       <span
                         className={`rounded px-1.5 py-0.5 text-xs ${
                           t.status === "완료"
@@ -246,10 +257,10 @@ export default async function LedgerPage({
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-slate-600">
+                    <td className="break-keep px-3 py-2.5 text-xs text-slate-600">
                       {cat || "-"}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-700">
+                    <td className="break-keep px-3 py-2.5 text-slate-700">
                       {t.description ?? "-"}
                     </td>
                     <td className="px-3 py-2.5 text-center text-xs text-slate-500">
@@ -288,6 +299,44 @@ export default async function LedgerPage({
             </tbody>
           </table>
         </div>
+        <div className="mt-3 space-y-3 md:hidden">
+          {transactions.map((t) => {
+            const cat = [t.budgetItem?.name, t.budgetSubItem?.name, t.budgetDetailItem?.name].filter(Boolean).join(" › ");
+            const isIn = t.direction === "IN";
+            const isCancelled = t.status === "취소";
+            return (
+              <article key={t.id} className={`rounded-xl border p-4 ${t.id === detail?.id ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}>
+                <Link href={detailHref(t.id)} className="block">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="font-mono text-xs text-slate-400">No. {seqLabel(t.seqNo)}</span>
+                      <span className={`rounded px-1.5 py-0.5 text-xs ${t.status === "완료" ? "bg-green-100 text-green-700" : t.status === "취소" ? "bg-slate-200 text-slate-500" : "bg-amber-100 text-amber-700"}`}>{t.status}</span>
+                      {t.rcmsRecord && (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${t.rcmsRecord.missingSince ? "bg-green-100 text-green-700" : t.rcmsRecord.progress === "임시저장" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                          RCMS {t.rcmsRecord.missingSince ? "이체완료" : t.rcmsRecord.progress ?? "등록"}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`whitespace-nowrap text-sm font-bold sm:shrink-0 ${isCancelled ? "text-slate-400 line-through" : isIn ? "text-blue-600" : "text-red-600"}`}>
+                      {isIn ? "+" : "−"}{won(t.amount)}
+                    </span>
+                  </div>
+                  <p className="mt-3 break-keep text-sm font-medium leading-6 text-slate-800">{t.description ?? "적요 없음"}</p>
+                  <p className="mt-1 break-keep text-xs leading-5 text-slate-500">{cat || "미분류"}</p>
+                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                    <span>{ymd(t.date)}</span>
+                    <span>{t._count.attachments > 0 ? `📎 증빙 ${t._count.attachments}개` : "증빙 없음"}</span>
+                  </div>
+                </Link>
+                <div className="mt-3 flex items-center gap-4 border-t border-slate-100 pt-3">
+                  <Link href={detailHref(t.id)} className="text-xs font-semibold text-slate-700">상세 열기</Link>
+                  <DeleteButton action={deleteTransaction} id={t.id} extra={hidden} confirmText="이 거래를 삭제하시겠습니까?" />
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        </>
       )}
 
       {/* 아래 패널: 행을 고르면 그 거래의 상세(수정·서류·증빙), 아니면 거래 추가 */}
