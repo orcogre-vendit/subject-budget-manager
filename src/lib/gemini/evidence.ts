@@ -123,6 +123,23 @@ function normalizeDraft(parsed: z.infer<typeof draftSchema>): EvidenceDraft {
   return { ...parsed, items, supplyAmount, vatAmount, totalAmount, warnings };
 }
 
+/** Gemini 오류 응답 → 사용자에게 보여줄 한국어 사유. 402(크레딧 소진)·429(한도)처럼 조치가 필요한 경우를 구분한다. */
+export function describeGeminiFailure(status: number, detail: string): string {
+  let message = "";
+  try {
+    const parsed = JSON.parse(detail) as { error?: { message?: string } };
+    message = parsed.error?.message ?? "";
+  } catch {
+    // 본문이 JSON 이 아니면 상태 코드만 사용
+  }
+  if (status === 402 || /prepayment credits|billing/i.test(message))
+    return "Gemini 선불 크레딧이 소진됐습니다. AI Studio(https://ai.studio/projects)에서 결제·크레딧을 충전한 뒤 다시 시도하세요. (402)";
+  if (status === 429) return "Gemini 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요. (429)";
+  if (status === 401 || status === 403) return "Gemini API 키가 유효하지 않거나 권한이 없습니다. 서버의 GEMINI_API_KEY 를 확인하세요. (" + status + ")";
+  if (status === 404) return `Gemini 모델 '${MODEL}' 을 찾을 수 없습니다. GEMINI_MODEL 설정을 확인하세요. (404)`;
+  return `Gemini 분석 요청이 실패했습니다. (${status})${message ? ` ${message.slice(0, 160)}` : ""}`;
+}
+
 export async function analyzeEvidence(files: AnalyzeFile[], context: EvidenceContext): Promise<EvidenceDraft> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) throw new Error("Gemini API 키가 설정되지 않았습니다.");
@@ -178,7 +195,7 @@ ${JSON.stringify(context.recentTransactions)}
   if (!response.ok) {
     const detail = await response.text();
     console.error("Gemini evidence analysis failed", response.status, detail.slice(0, 500));
-    throw new Error(`Gemini 분석 요청이 실패했습니다. (${response.status})`);
+    throw new Error(describeGeminiFailure(response.status, detail));
   }
 
   const body = await response.json() as {
