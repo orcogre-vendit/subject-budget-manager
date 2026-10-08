@@ -25,6 +25,8 @@ export const EVIDENCE_CODES: Record<string, string> = {
   TRAVEL_REPORT: "출장결과보고서",
   PAYSLIP: "급여명세서",
   TRANSFER_PROOF: "계좌이체증명",
+  BANK_COPY: "통장사본",
+  BIZ_REG: "사업자등록증",
   RESEARCHER_ROSTER: "참여연구자현황표",
   INSURANCE_CERT: "건강보험자격득실확인서",
   EMPLOYMENT_CONTRACT: "근로계약서",

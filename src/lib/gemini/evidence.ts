@@ -74,7 +74,7 @@ const responseSchema = {
           fileName: { type: "string" },
           evidenceCode: {
             type: "string",
-            description: "QUOTE, STATEMENT, CARD_SLIP, TAX_INVOICE, RECEIPT, or OTHER",
+            description: "QUOTE, STATEMENT, CARD_SLIP, TAX_INVOICE, RECEIPT, BANK_COPY(통장사본), BIZ_REG(사업자등록증), or OTHER",
           },
         },
         required: ["fileName", "evidenceCode"],

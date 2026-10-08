@@ -10,6 +10,8 @@ export type PickedEvidence = { id: number; file: File; name: string; code: strin
 
 /** 파일명으로 증빙 유형 추측 — 순서대로 첫 매치. 못 맞히면 빈 값(사용자가 고름) */
 const NAME_RULES: [RegExp, string][] = [
+  [/통장.?사본|bank.?(copy|book)|passbook/i, "BANK_COPY"],
+  [/사업자.?등록|business.?reg/i, "BIZ_REG"],
   [/세금계산서|계산서|tax.?invoice/i, "TAX_INVOICE"],
   [/거래명세|명세서|statement/i, "STATEMENT"],
   [/카드|매출전표|card|slip/i, "CARD_SLIP"],
