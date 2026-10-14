@@ -8,6 +8,9 @@ export type EvidenceDraftItem = {
 export type EvidenceDraft = {
   date: string;
   vendor: string;
+  vendorBank: string;
+  vendorAccount: string;
+  vendorHolder: string;
   paymentMethod: "연구비카드" | "RCMS 계좌이체" | "";
   supplyAmount: number;
   vatRate: number;
