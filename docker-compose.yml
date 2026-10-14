@@ -6,6 +6,8 @@ services:
     env_file:
       - path: .env.gemini
         required: false
+      - path: .env.auth # GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / SESSION_SECRET / AUTH_ALLOWED_DOMAINS / APP_URL
+        required: false
     ports:
       - "3000:3000"
     environment:
