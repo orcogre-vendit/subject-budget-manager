@@ -398,6 +398,9 @@ function TxFields({
 
     put("date", draft.date);
     put("vendor", draft.vendor);
+    put("vendorBank", draft.vendorBank);
+    put("vendorAccount", draft.vendorAccount);
+    put("vendorHolder", draft.vendorHolder);
     put("paymentMethod", draft.paymentMethod);
     if (draft.supplyAmount > 0) next.amount = String(draft.supplyAmount);
     if (draft.supplyAmount > 0 || draft.totalAmount > 0) {
