@@ -5,7 +5,7 @@ import { useState } from "react";
 import { downloadHref } from "@/lib/download";
 
 export type GeneratedDoc = {
-  id: number;
+  id: string;
   templateCode: string;
   format: string; // text | pdf
   content: string | null;
@@ -40,9 +40,9 @@ export default function DocumentsPanel({
   generate,
   remove,
 }: {
-  transactionId: number;
-  projectId: number;
-  projectYearId: number;
+  transactionId: string;
+  projectId: string;
+  projectYearId: string;
   direction: string;
   hasVat: boolean;
   requiredCodes: string[];

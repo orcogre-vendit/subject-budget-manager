@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { deleteUpload } from "@/lib/uploads";
+import { idOf } from "@/lib/ids";
 import {
   PROJECT_FIELDS,
   PROJECT_YEAR_FIELDS,
@@ -12,7 +13,7 @@ import {
 } from "./fields";
 
 /**
- * 주어진 조건의 거래에 딸린 디스크 파일(증빙 첨부 + 생성 PDF) 경로 — UPLOAD_DIR 기준 상대경로.
+ * 주어진 조건의 거래에 딸린 저장소 파일(증빙 첨부 + 생성 PDF) 키.
  * DB 레코드는 cascade 로 함께 지워지므로 삭제 전에 모아 두고, 삭제가 성공한 뒤 deleteUpload 로 지운다.
  */
 async function collectTransactionFiles(where: Prisma.TransactionWhereInput): Promise<string[]> {
@@ -119,7 +120,7 @@ export async function updateProject(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const id = Number(formData.get("id"));
+  const id = idOf(formData.get("id"));
   if (!id) return { error: "잘못된 과제 ID입니다." };
 
   const raw = rawForm(PROJECT_FIELDS, formData);
@@ -142,9 +143,9 @@ export async function updateProject(
 }
 
 export async function deleteProject(formData: FormData): Promise<void> {
-  const id = Number(formData.get("id"));
+  const id = idOf(formData.get("id"));
   if (!id) return;
-  // 첨부·생성PDF 파일도 디스크에서 제거 (DB 레코드는 cascade)
+  // 첨부·생성PDF 파일도 저장소에서 제거 (DB 레코드는 cascade)
   const files = await collectTransactionFiles({ projectYear: { projectId: id } });
   await prisma.project.delete({ where: { id } });
   await Promise.all(files.map(deleteUpload));
@@ -170,7 +171,7 @@ export async function createProjectYear(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const projectId = Number(formData.get("projectId"));
+  const projectId = idOf(formData.get("projectId"));
   if (!projectId) return { error: "잘못된 과제 ID입니다." };
 
   const raw = rawForm(PROJECT_YEAR_FIELDS, formData);
@@ -197,8 +198,8 @@ export async function updateProjectYear(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const id = Number(formData.get("id"));
-  const projectId = Number(formData.get("projectId"));
+  const id = idOf(formData.get("id"));
+  const projectId = idOf(formData.get("projectId"));
   if (!id || !projectId) return { error: "잘못된 연차 ID입니다." };
 
   const raw = rawForm(PROJECT_YEAR_FIELDS, formData);
@@ -220,10 +221,10 @@ export async function updateProjectYear(
 }
 
 export async function deleteProjectYear(formData: FormData): Promise<void> {
-  const id = Number(formData.get("id"));
-  const projectId = Number(formData.get("projectId"));
+  const id = idOf(formData.get("id"));
+  const projectId = idOf(formData.get("projectId"));
   if (!id) return;
-  // 첨부·생성PDF 파일도 디스크에서 제거 (DB 레코드는 cascade)
+  // 첨부·생성PDF 파일도 저장소에서 제거 (DB 레코드는 cascade)
   const files = await collectTransactionFiles({ projectYearId: id });
   await prisma.projectYear.delete({ where: { id } });
   await Promise.all(files.map(deleteUpload));

@@ -11,9 +11,9 @@ export const yearInclude = {
   project: { select: { id: true, name: true, code: true } },
   rcmsRecords: {
     include: { transaction: { include: txInclude } },
-    orderBy: [{ useDate: "desc" as const }, { id: "desc" as const }],
+    orderBy: [{ useDate: "desc" as const }, { firstSeenAt: "desc" as const }],
   },
-  transactions: { include: txInclude, orderBy: [{ date: "asc" as const }, { id: "asc" as const }] },
+  transactions: { include: txInclude, orderBy: [{ date: "asc" as const }, { seqNo: "asc" as const }] },
 } satisfies Prisma.ProjectYearInclude;
 
 export type YearForRcms = Prisma.ProjectYearGetPayload<{ include: typeof yearInclude }>;

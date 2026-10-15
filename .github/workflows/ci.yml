@@ -9,14 +9,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # 빌드/검증용 더미 값 (동적 페이지라 빌드 시 DB 쿼리는 실행되지 않음)
-      DATABASE_URL: "file:./dev.db"
+      # 빌드/검증용 더미 값 (동적 페이지라 빌드 시 DB·S3 는 호출되지 않음)
+      DSQL_ENDPOINT: "dummy.dsql.ap-northeast-2.on.aws"
+      FILES_BUCKET: "dummy"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -27,6 +28,9 @@ jobs:
 
       - name: Validate Prisma schema
         run: npx prisma validate
+
+      - name: Validate schema for Aurora DSQL
+        run: npx aurora-dsql-prisma validate prisma/schema.prisma
 
       - name: Lint
         run: npm run lint

@@ -8,8 +8,9 @@ import { autoMatch } from "@/lib/rcms/match";
 import { txInclude } from "@/lib/rcms/db";
 import { nextSeqNo } from "@/lib/seq";
 import { findOrCreateItem, resolveSubAndDetail } from "@/lib/categories";
+import { idOf } from "@/lib/ids";
 
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 5 * 1024 * 1024; // Lambda 요청 본문 한도(6MB) 안
 
 function recordData(row: RcmsRow) {
   return {
@@ -41,7 +42,7 @@ function recordData(row: RcmsRow) {
 type Syncable = { supplyAmount: number; vatAmount: number; vendor: string | null; progress: string | null };
 
 /** RCMS 실집행액을 장부 거래에 반영 — 실행된 집행은 RCMS 가 원본. 품의 금액은 plannedAmount 에 보존 */
-async function syncTransaction(txId: number, rec: Syncable) {
+async function syncTransaction(txId: string, rec: Syncable) {
   const tx = await prisma.transaction.findUnique({
     where: { id: txId },
     select: { amount: true, plannedAmount: true, vendor: true, status: true },
@@ -60,7 +61,7 @@ async function syncTransaction(txId: number, rec: Syncable) {
   });
 }
 
-async function applyMatch(recordId: number, txId: number, method: "auto" | "manual"): Promise<boolean> {
+async function applyMatch(recordId: string, txId: string, method: "auto" | "manual"): Promise<boolean> {
   const [rec, tx] = await Promise.all([
     prisma.rcmsRecord.findUnique({ where: { id: recordId } }),
     prisma.transaction.findUnique({
@@ -75,7 +76,7 @@ async function applyMatch(recordId: number, txId: number, method: "auto" | "manu
   return true;
 }
 
-async function autoMatchYears(yearIds: number[]): Promise<number> {
+async function autoMatchYears(yearIds: string[]): Promise<number> {
   let n = 0;
   for (const projectYearId of yearIds) {
     const [records, txs] = await Promise.all([
@@ -90,7 +91,7 @@ async function autoMatchYears(yearIds: number[]): Promise<number> {
   return n;
 }
 
-async function revalidateYears(yearIds: number[]) {
+async function revalidateYears(yearIds: string[]) {
   revalidatePath("/rcms");
   revalidatePath("/");
   const years = await prisma.projectYear.findMany({ where: { id: { in: yearIds } }, select: { id: true, projectId: true } });
@@ -107,7 +108,7 @@ export async function importRcms(_prev: FormState, fd: FormData): Promise<FormSt
   const file = fd.get("file");
   if (!(file instanceof File) || file.size === 0) return { fieldErrors: { file: "RCMS 엑셀 파일을 선택하세요." } };
   if (!/\.xlsx$/i.test(file.name)) return { fieldErrors: { file: ".xlsx 파일만 가져올 수 있습니다." } };
-  if (file.size > MAX_BYTES) return { fieldErrors: { file: "파일이 너무 큽니다 (10MB 이하)." } };
+  if (file.size > MAX_BYTES) return { fieldErrors: { file: "파일이 너무 큽니다 (5MB 이하)." } };
 
   let parsed: ReturnType<typeof parseRcmsExport>;
   try {
@@ -121,7 +122,7 @@ export async function importRcms(_prev: FormState, fd: FormData): Promise<FormSt
   const projects = await prisma.project.findMany({
     select: { id: true, code: true, name: true, years: { select: { id: true, yearNo: true } } },
   });
-  const resolveYear = (row: RcmsRow): { yearId: number } | { reason: string } => {
+  const resolveYear = (row: RcmsRow): { yearId: string } | { reason: string } => {
     const digits = row.rcmsProjectNo.replace(/\D/g, "");
     if (!digits) return { reason: `과제번호가 비어 있음` };
     const proj = projects.find((p) => {
@@ -136,7 +137,7 @@ export async function importRcms(_prev: FormState, fd: FormData): Promise<FormSt
   };
 
   const now = new Date();
-  const seen = new Map<number, Set<string>>();
+  const seen = new Map<string, Set<string>>();
   const skipped = new Map<string, number>();
   let created = 0;
   let updated = 0;
@@ -204,17 +205,17 @@ export async function importRcms(_prev: FormState, fd: FormData): Promise<FormSt
 // ---------- 수동 매칭 ----------
 
 export async function matchRecord(fd: FormData): Promise<void> {
-  const recordId = Number(fd.get("recordId"));
-  const transactionId = Number(fd.get("transactionId"));
-  const yearId = Number(fd.get("yearId"));
+  const recordId = idOf(fd.get("recordId"));
+  const transactionId = idOf(fd.get("transactionId"));
+  const yearId = idOf(fd.get("yearId"));
   if (!recordId || !transactionId) return;
   await applyMatch(recordId, transactionId, "manual");
   if (yearId) await revalidateYears([yearId]);
 }
 
 export async function unmatchRecord(fd: FormData): Promise<void> {
-  const recordId = Number(fd.get("recordId"));
-  const yearId = Number(fd.get("yearId"));
+  const recordId = idOf(fd.get("recordId"));
+  const yearId = idOf(fd.get("yearId"));
   if (!recordId) return;
   const rec = await prisma.rcmsRecord.findUnique({ where: { id: recordId }, select: { transactionId: true } });
   if (!rec?.transactionId) return;
@@ -237,8 +238,8 @@ async function resolveBudget(path: string | null) {
 
 /** 품의 없이 RCMS 에만 있는 건 → 장부 거래를 만들어 연결 (수동 입력 대체) */
 export async function createTransactionFromRecord(fd: FormData): Promise<void> {
-  const recordId = Number(fd.get("recordId"));
-  const yearId = Number(fd.get("yearId"));
+  const recordId = idOf(fd.get("recordId"));
+  const yearId = idOf(fd.get("yearId"));
   if (!recordId) return;
   const rec = await prisma.rcmsRecord.findUnique({ where: { id: recordId } });
   if (!rec || rec.transactionId) return;

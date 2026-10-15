@@ -15,7 +15,7 @@ export default function ResearcherForm({
 }: {
   action: Action;
   defaultValues?: Record<string, string | null>;
-  researcherId?: number;
+  researcherId?: string;
   submitLabel: string;
 }) {
   const [state, formAction, pending] = useActionState(action, {});

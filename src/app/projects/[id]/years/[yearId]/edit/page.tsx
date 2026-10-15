@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { idOf } from "@/lib/ids";
 import RecordForm from "@/components/RecordForm";
 import { toFormValues } from "@/lib/form";
 import { PROJECT_YEAR_FIELDS } from "../../../../fields";
@@ -14,8 +15,8 @@ export default async function EditProjectYearPage({
   params: Promise<{ id: string; yearId: string }>;
 }) {
   const { id, yearId } = await params;
-  const projectId = Number(id);
-  const pyId = Number(yearId);
+  const projectId = idOf(id);
+  const pyId = idOf(yearId);
   if (!projectId || !pyId) notFound();
 
   const year = await prisma.projectYear.findUnique({

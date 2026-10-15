@@ -12,12 +12,14 @@ export default function EvidenceAiPanel({
   projectYearId,
   naming,
   onCodesChange,
+  onBusyChange,
   onApply,
   error,
 }: {
-  projectYearId: number;
+  projectYearId: string;
   naming: NamingContext;
   onCodesChange: (codes: string[]) => void;
+  onBusyChange?: (busy: boolean) => void;
   onApply: (draft: EvidenceDraft) => void;
   error?: string;
 }) {
@@ -26,22 +28,26 @@ export default function EvidenceAiPanel({
   const [analysisError, setAnalysisError] = useState("");
   const [draft, setDraft] = useState<EvidenceDraft | null>(null);
 
-  const validFiles = picked
-    .filter((item) => !item.problem && AI_EXTENSIONS.has(extOf(item.file.name)))
-    .map((item) => item.file);
+  const analyzable = picked.filter((item) => !item.problem && AI_EXTENSIONS.has(extOf(item.file.name)));
+  const ready = analyzable.filter((item) => item.status === "done" && item.key);
+  const uploading = analyzable.filter((item) => item.status === "uploading").length;
   const unsupportedCount = picked.filter(
     (item) => !item.problem && !AI_EXTENSIONS.has(extOf(item.file.name)),
   ).length;
 
   const analyze = async () => {
-    if (!validFiles.length || pending) return;
+    if (!ready.length || pending) return;
     setPending(true);
     setAnalysisError("");
     try {
-      const fd = new FormData();
-      fd.set("projectYearId", String(projectYearId));
-      validFiles.forEach((file) => fd.append("files", file));
-      const response = await fetch("/api/evidence/analyze", { method: "POST", body: fd });
+      const response = await fetch("/api/evidence/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectYearId,
+          files: ready.map((item) => ({ key: item.key, name: item.name, type: item.file.type || "application/octet-stream" })),
+        }),
+      });
       const result = await response.json() as EvidenceAnalysisResponse;
       if (!response.ok || !result.draft) throw new Error(result.error || "증빙을 분석하지 못했습니다.");
       setDraft(result.draft);
@@ -72,6 +78,7 @@ export default function EvidenceAiPanel({
         hint="(PDF·사진을 함께 올리면 서로 대조합니다)"
         onCodesChange={onCodesChange}
         onSelectionChange={setPicked}
+        onBusyChange={onBusyChange}
         naming={naming}
       />
 
@@ -79,13 +86,17 @@ export default function EvidenceAiPanel({
         <button
           type="button"
           onClick={analyze}
-          disabled={!validFiles.length || pending}
+          disabled={!ready.length || uploading > 0 || pending}
           className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pending ? "PDF·OCR 분석 중…" : "AI로 읽고 자동 입력"}
         </button>
         <p className="text-xs text-slate-500">
-          {validFiles.length ? `${validFiles.length}개 파일 분석 대기` : "분석할 PDF 또는 이미지를 올려주세요."}
+          {uploading > 0
+            ? `파일 ${uploading}개 업로드 중…`
+            : ready.length
+              ? `${ready.length}개 파일 분석 대기`
+              : "분석할 PDF 또는 이미지를 올려주세요."}
         </p>
         {unsupportedCount > 0 && (
           <p className="text-xs text-amber-700">문서 파일 {unsupportedCount}개는 첨부만 하고 AI 분석에서는 제외합니다.</p>

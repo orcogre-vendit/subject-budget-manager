@@ -16,7 +16,9 @@
 ## 기술 스택
 
 - [Next.js 16](https://nextjs.org) (App Router) · React 19 · TypeScript
-- [Prisma 7](https://www.prisma.io) + SQLite (better-sqlite3 어댑터)
+- [Prisma 7](https://www.prisma.io) + [Amazon Aurora DSQL](https://aws.amazon.com/rds/aurora/dsql/) (PostgreSQL 호환 서버리스, IAM 토큰 인증)
+- 파일 저장소: Amazon S3 (브라우저 → S3 직접 업로드, presigned URL 다운로드)
+- 실행: AWS Lambda (Web Adapter) + HTTP API Gateway, `budget.agopher.org`
 - Tailwind CSS v4
 - 서버 액션 기반 폼 처리 / 서버 렌더 차트(의존성 없음)
 
@@ -32,43 +34,56 @@ BudgetItem(비목) → BudgetSubItem(세목) → BudgetDetailItem(세세목)
 Researcher (연구원)
 ```
 
-## 시작하기
+## 시작하기 (로컬 개발)
+
+로컬에도 DB 서버가 없습니다. 개발용 DSQL 클러스터·S3 버킷에 AWS 자격증명(`~/.aws` default 프로필)으로 붙습니다.
 
 ```bash
 npm install
-npx prisma migrate dev      # DB 생성 + 마이그레이션
-npx prisma db seed          # 비목/세목/세세목 기준정보 적재
-npm run dev                 # http://localhost:3000
+cp .env.example .env         # DSQL_ENDPOINT / FILES_BUCKET / AWS_REGION
+npx prisma generate
+npm run db:migrate           # DSQL 에 마이그레이션 적용 (IAM 토큰 자동 발급)
+npm run db:seed              # 비목/세목/세세목 기준정보 + 증빙 요건
+npm run dev                  # http://localhost:3000
 ```
 
-## 배포 (개인 서버 self-host)
+## 배포 (AWS 서버리스)
 
-이 앱은 Next.js 모놀리식(서버 액션 + Prisma + SQLite + 로컬 파일 업로드)이라 단일 Docker 컨테이너로 self-host 합니다. SQLite DB와 증빙 파일은 볼륨에 영속 저장됩니다.
+`infra/template.yaml`(SAM 문법) 하나로 DSQL 클러스터·S3 버킷·ACM 인증서·Lambda·HTTP API·Route 53 레코드·예산 알림을 만듭니다.
+bizcard/vcmc 스택과 같은 구성입니다.
 
 ```bash
-# 로컬 빌드 후 실행
-docker compose up --build -d
-# http://localhost:3000  (data/, uploads/ 디렉토리에 영속)
+# 비밀값은 infra/params.prod.env (git 제외): SessionSecret, GoogleClientId, GoogleClientSecret, GeminiApiKey
+npm run deploy               # = scripts/deploy.sh prod
 ```
 
-GitHub Actions가 `main` 푸시마다 이미지를 [GHCR](https://ghcr.io)에 푸시하므로, 서버에서는 빌드 없이 pull만 하면 됩니다:
+배포 스크립트 순서: `next build`(standalone) → `infra/build/` 번들 → `aws cloudformation package/deploy` → `prisma migrate deploy` + seed → 헬스체크.
+
+| 환경변수 (Lambda) | 설명 |
+|---|---|
+| `DSQL_ENDPOINT` | DSQL 클러스터 엔드포인트. 비밀번호 없음(IAM `dsql:DbConnectAdmin`) |
+| `FILES_BUCKET` | 증빙·생성 PDF 버킷. `staging/` 은 1일 뒤 자동 삭제 |
+| `APP_URL` | 공개 주소. 구글 로그인 리디렉션 URI 계산 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `SESSION_SECRET` | 셋 다 있어야 로그인 게이트가 켜짐 |
+| `AUTH_ALLOWED_DOMAINS` | 허용 이메일 도메인 (기본 `vendit.co.kr`) |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | 증빙 자동입력 |
+
+### DSQL 때문에 다른 점
+
+- id 는 모두 UUID (시퀀스 대신). URL 도 `/projects/<uuid>/...`
+- 마이그레이션 SQL 은 `aurora-dsql-prisma migrate` 로 생성 (인덱스 `ASYNC`, FK `NOT VALID`, DDL 하나당 트랜잭션 하나). 스키마를 바꾸면:
+  ```bash
+  npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script | npx aurora-dsql-prisma transform > prisma/migrations/<시각>_<이름>/migration.sql
+  ```
+- 트랜잭션당 3,000행·10MiB 한도. cascade 삭제도 포함되므로 대량 삭제는 나눠서.
+- Lambda 요청·응답 6MB 한도 → 파일은 브라우저가 S3 에 직접 올리고(presigned PUT), 다운로드는 presigned GET 리다이렉트.
+
+### 구 홈서버(SQLite) 에서 데이터 가져오기
 
 ```bash
-docker pull ghcr.io/orcogre-vendit/subject-budget-manager:latest
-# docker-compose.yml에서 build: . 대신 image: 줄을 사용
+SRC_DB=.migration-src/app.db SRC_UPLOADS=.migration-src/uploads npm run db:import -- --dry-run
+npm run db:import -- --wipe     # 정수 id → UUID 재매핑, 파일 → S3, 끝나면 행 수·금액 합계·첨부 바이트 대조
 ```
-
-컨테이너 시작 시 마이그레이션(`prisma migrate deploy`)과 기준정보 seed가 자동 적용됩니다.
-
-| 환경변수 | 기본값 | 설명 |
-|---|---|---|
-| `DATABASE_URL` | `file:/app/data/app.db` | SQLite 경로(볼륨) |
-| `UPLOAD_DIR` | `/app/uploads` | 증빙 저장 경로(볼륨) |
-| `PORT` | `3000` | 포트 |
-| `GEMINI_API_KEY` | - | 증빙 자동입력용 Gemini API 키 (`.env.gemini`, 커밋 금지) |
-| `GEMINI_MODEL` | `gemini-3.8-flash` | 증빙 PDF·OCR 분석 모델 |
-
-> Vercel은 서버리스 파일시스템이 임시·읽기전용이라 로컬 SQLite·파일 업로드와 맞지 않습니다. 이 앱은 영속 디스크가 있는 서버(개인 서버/Fly.io/Railway 등)에 self-host 하는 구성입니다.
 
 ## 라이선스
 

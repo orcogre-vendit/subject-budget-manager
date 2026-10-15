@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { idOf } from "@/lib/ids";
 import ResearcherForm from "@/components/ResearcherForm";
 import { updateResearcher } from "../../actions";
 
@@ -12,7 +13,7 @@ export default async function EditResearcherPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const researcherId = Number(id);
+  const researcherId = idOf(id);
   if (!researcherId) notFound();
 
   const researcher = await prisma.researcher.findUnique({

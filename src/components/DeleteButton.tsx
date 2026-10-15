@@ -2,7 +2,7 @@
 
 type Props = {
   action: (formData: FormData) => void | Promise<void>;
-  id: number;
+  id: string;
   confirmText: string;
   label?: string;
   extra?: Record<string, string | number>;

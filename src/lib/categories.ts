@@ -5,7 +5,7 @@ import type { PrismaClient } from "../generated/prisma/client";
 import { normalizeCategoryName } from "./budgetStandard";
 
 type Db = Pick<PrismaClient, "budgetItem" | "budgetSubItem" | "budgetDetailItem">;
-export type CategoryRow = { id: number; name: string };
+export type CategoryRow = { id: string; name: string };
 
 const pick = (rows: CategoryRow[], name: string): CategoryRow | null => {
   const key = normalizeCategoryName(name);
@@ -23,23 +23,23 @@ export async function findOrCreateItem(db: Db, name: string, sortOrder = 99): Pr
   return db.budgetItem.create({ data: { name: name.trim(), sortOrder }, select: { id: true, name: true } });
 }
 
-export async function findSub(db: Db, budgetItemId: number, name: string): Promise<CategoryRow | null> {
+export async function findSub(db: Db, budgetItemId: string, name: string): Promise<CategoryRow | null> {
   const rows = await db.budgetSubItem.findMany({ where: { budgetItemId }, select: { id: true, name: true } });
   return pick(rows, name);
 }
 
-export async function findOrCreateSub(db: Db, budgetItemId: number, name: string): Promise<CategoryRow> {
+export async function findOrCreateSub(db: Db, budgetItemId: string, name: string): Promise<CategoryRow> {
   const hit = await findSub(db, budgetItemId, name);
   if (hit) return hit;
   return db.budgetSubItem.create({ data: { budgetItemId, name: name.trim() }, select: { id: true, name: true } });
 }
 
-export async function findDetail(db: Db, budgetSubItemId: number, name: string): Promise<CategoryRow | null> {
+export async function findDetail(db: Db, budgetSubItemId: string, name: string): Promise<CategoryRow | null> {
   const rows = await db.budgetDetailItem.findMany({ where: { budgetSubItemId }, select: { id: true, name: true } });
   return pick(rows, name);
 }
 
-export async function findOrCreateDetail(db: Db, budgetSubItemId: number, name: string): Promise<CategoryRow> {
+export async function findOrCreateDetail(db: Db, budgetSubItemId: string, name: string): Promise<CategoryRow> {
   const hit = await findDetail(db, budgetSubItemId, name);
   if (hit) return hit;
   return db.budgetDetailItem.create({ data: { budgetSubItemId, name: name.trim() }, select: { id: true, name: true } });
@@ -48,10 +48,10 @@ export async function findOrCreateDetail(db: Db, budgetSubItemId: number, name: 
 /** 비목 id 아래로 세목·세세목 이름을 찾거나 등록해 id 묶음으로 */
 export async function resolveSubAndDetail(
   db: Db,
-  budgetItemId: number | null,
+  budgetItemId: string | null,
   subName: string | null | undefined,
   detailName: string | null | undefined,
-): Promise<{ budgetItemId: number | null; budgetSubItemId: number | null; budgetDetailItemId: number | null }> {
+): Promise<{ budgetItemId: string | null; budgetSubItemId: string | null; budgetDetailItemId: string | null }> {
   if (!budgetItemId || !subName?.trim()) return { budgetItemId, budgetSubItemId: null, budgetDetailItemId: null };
   const sub = await findOrCreateSub(db, budgetItemId, subName);
   const detail = detailName?.trim() ? await findOrCreateDetail(db, sub.id, detailName) : null;

@@ -16,14 +16,14 @@ import type { EvidenceDraft } from "@/lib/gemini/evidenceTypes";
 const DEFAULT_INSTALL_LOCATION = "주식회사 벤디트 기업부설연구소내";
 
 export type BudgetSub = {
-  id: number;
+  id: string;
   name: string;
-  detailItems: { id: number; name: string }[];
+  detailItems: { id: string; name: string }[];
   evidenceRequirements?: ReqRow[];
 };
 
 export type BudgetTree = {
-  id: number;
+  id: string;
   name: string;
   subItems: BudgetSub[];
 }[];
@@ -368,13 +368,15 @@ function TxFields({
   withEvidence,
   nextSeqNo,
   projectYearId,
+  onBusyChange,
 }: {
   v: Values;
   fe?: Record<string, string>;
   budgetTree: BudgetTree;
   withEvidence?: boolean;
   nextSeqNo?: number | null;
-  projectYearId?: number;
+  projectYearId?: string;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [values, setValues] = useState(v);
   const [revision, setRevision] = useState(0);
@@ -444,6 +446,7 @@ function TxFields({
           projectYearId={projectYearId}
           naming={naming}
           onCodesChange={setAttachedCodes}
+          onBusyChange={onBusyChange}
           onApply={applyDraft}
           error={fe?.evidenceFile}
         />
@@ -488,6 +491,7 @@ export default function TransactionForm({
   nextSeqNo?: number | null;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
+  const [busy, setBusy] = useState(false);
   const v = state.values ?? defaultValues;
 
   return (
@@ -507,13 +511,14 @@ export default function TransactionForm({
         budgetTree={budgetTree}
         withEvidence={withEvidence}
         nextSeqNo={nextSeqNo}
-        projectYearId={Number(hidden.projectYearId) || undefined}
+        projectYearId={hidden.projectYearId ? String(hidden.projectYearId) : undefined}
+        onBusyChange={setBusy}
       />
 
       <div className="mt-5 flex items-center gap-3">
-        <button type="submit" disabled={pending}
+        <button type="submit" disabled={pending || busy}
           className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50">
-          {pending ? "저장 중…" : submitLabel}
+          {pending ? "저장 중…" : busy ? "증빙 올리는 중…" : submitLabel}
         </button>
         {cancelHref && (
           <Link href={cancelHref} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">취소</Link>

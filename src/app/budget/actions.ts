@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import type { FormState } from "@/app/projects/actions";
+import { idOf } from "@/lib/ids";
 
 export async function createBudgetItem(
   _prev: FormState,
@@ -28,7 +29,7 @@ export async function createBudgetItem(
 
 /** 세목/세세목이 없는(거래에 미사용) 비목만 삭제 */
 export async function deleteBudgetItem(fd: FormData): Promise<void> {
-  const id = Number(fd.get("id"));
+  const id = idOf(fd.get("id"));
   if (!id) return;
   const [subCount, txCount] = await Promise.all([
     prisma.budgetSubItem.count({ where: { budgetItemId: id } }),

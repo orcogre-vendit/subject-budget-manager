@@ -1,9 +1,8 @@
-// PDF 렌더 → UPLOAD_DIR/generated/... 저장. DRM·암호화 없는 순수 PDF (RCMS 업로드 요건).
-import { mkdir, writeFile } from "fs/promises";
+// PDF 렌더 → S3 generated/{txId}/… 저장. DRM·암호화 없는 순수 PDF (RCMS 업로드 요건).
 import path from "path";
 import type { ReactElement } from "react";
 import { renderToBuffer } from "@react-pdf/renderer";
-import { UPLOAD_DIR } from "@/lib/uploads";
+import { putObject } from "@/lib/storage";
 import { registerPdfFonts } from "./font";
 
 export async function renderPdfBuffer(element: ReactElement): Promise<Buffer> {
@@ -13,8 +12,8 @@ export async function renderPdfBuffer(element: ReactElement): Promise<Buffer> {
 }
 
 /**
- * PDF 파일로 저장. relDir 은 UPLOAD_DIR 기준 상대경로 (예: generated/12)
- * @returns UPLOAD_DIR 기준 상대경로와 바이트 수
+ * PDF 를 만들어 S3 에 저장. relDir 은 버킷 안의 접두 경로 (예: generated/{txId})
+ * @returns 저장 키와 바이트 수
  */
 export async function renderPdfFile(
   element: ReactElement,
@@ -22,8 +21,7 @@ export async function renderPdfFile(
   fileName: string,
 ): Promise<{ relPath: string; size: number }> {
   const buf = await renderPdfBuffer(element);
-  const dir = path.join(UPLOAD_DIR, relDir);
-  await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, fileName), buf);
-  return { relPath: path.posix.join(relDir, fileName), size: buf.length };
+  const relPath = path.posix.join(relDir, fileName);
+  await putObject(relPath, buf, "application/pdf");
+  return { relPath, size: buf.length };
 }
