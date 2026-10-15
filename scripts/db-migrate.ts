@@ -4,7 +4,36 @@
 // advisory lock 은 지원하지 않아 PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=1 이 필요하다.
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
-import { dsqlUrl } from "../src/lib/db";
+import { Client } from "pg";
+import { dsqlPoolConfig, dsqlUrl } from "../src/lib/db";
+
+/**
+ * CREATE INDEX ASYNC / VALIDATE CONSTRAINT 는 비동기 작업(sys.jobs)으로 돌아간다. 인덱스가 다 서기 전에 seed 가
+ * upsert(ON CONFLICT) 를 치면 "no unique constraint matching the ON CONFLICT specification" 으로 실패하므로 끝날 때까지 기다린다.
+ */
+async function waitForDdlJobs(timeoutMs = 10 * 60_000) {
+  const client = new Client(dsqlPoolConfig());
+  await client.connect();
+  try {
+    const started = Date.now();
+    for (;;) {
+      const { rows } = await client.query<{ n: string }>(
+        "select count(*)::text as n from sys.jobs where status not in ('completed','failed')",
+      );
+      const n = Number(rows[0]?.n ?? 0);
+      if (n === 0) break;
+      if (Date.now() - started > timeoutMs) throw new Error(`DDL 비동기 작업 ${n}개가 ${timeoutMs / 1000}초 안에 끝나지 않았습니다.`);
+      console.log(`  비동기 DDL 작업 ${n}개 진행 중… 대기`);
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    const failed = await client.query<{ job_id: string; details: string | null }>(
+      "select job_id, details from sys.jobs where status = 'failed'",
+    );
+    if (failed.rows.length) console.warn("⚠ 실패한 DDL 작업:", JSON.stringify(failed.rows));
+  } finally {
+    await client.end();
+  }
+}
 
 async function main() {
   const url = await dsqlUrl();
@@ -14,7 +43,9 @@ async function main() {
     stdio: "inherit",
     env: { ...process.env, DATABASE_URL: url, PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK: "1" },
   });
-  process.exit(res.status ?? 1);
+  if (res.status !== 0) process.exit(res.status ?? 1);
+  if (sub[0] === "migrate") await waitForDdlJobs();
+  process.exit(0);
 }
 
 main().catch((e) => {
