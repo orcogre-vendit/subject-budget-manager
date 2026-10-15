@@ -1,12 +1,8 @@
-import { mkdir, writeFile, unlink, rmdir } from "fs/promises";
-import path from "path";
+// 업로드 파일 처리 — 저장소는 S3(src/lib/storage.ts). 증빙 첨부 키는 "attachments/UUID.ext", 생성 PDF 는 "generated/{txId}/파일.pdf".
 import { extOf } from "./uploadRules";
+import { ATTACHMENT_PREFIX, STAGING_PREFIX, copyObject, deleteObject, getObjectRange, headObject, putObject } from "./storage";
 
 export { ALLOWED_EXT, MAX_UPLOAD_BYTES, extOf } from "./uploadRules";
-
-/** 업로드 파일 저장 위치. 배포 시 UPLOAD_DIR로 볼륨 경로 지정(기본: 프로젝트 루트/uploads) */
-export const UPLOAD_DIR =
-  process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 
 /** 암호화(DRM)된 PDF 여부 — /Encrypt 사전이 있으면 RCMS 업로드 불가 */
 export function looksEncryptedPdf(buf: Buffer, fileName: string): boolean {
@@ -17,46 +13,50 @@ export function looksEncryptedPdf(buf: Buffer, fileName: string): boolean {
   return /\/Encrypt\b/.test(tail) || /\/Encrypt\b/.test(head);
 }
 
-export async function ensureUploadDir(): Promise<void> {
-  await mkdir(UPLOAD_DIR, { recursive: true });
+/** S3 에 올라간 PDF 의 머리 4KB·꼬리 64KB 만 읽어 암호화 여부 검사 */
+export async function looksEncryptedPdfAt(key: string, size: number, fileName: string): Promise<boolean> {
+  if (extOf(fileName) !== "pdf" || size <= 0) return false;
+  const head = await getObjectRange(key, `bytes=0-${Math.min(4095, size - 1)}`);
+  if (/\/Encrypt\b/.test(head.toString("latin1"))) return true;
+  if (size <= 4096) return false;
+  const tail = await getObjectRange(key, `bytes=${Math.max(0, size - 65536)}-${size - 1}`);
+  return /\/Encrypt\b/.test(tail.toString("latin1"));
 }
 
-/** 이미 읽어둔 버퍼를 디스크에 저장하고 저장명·크기 반환 (확장자는 원본 파일명에서) */
+function newStoredName(originalName: string): string {
+  const ext = extOf(originalName);
+  return `${ATTACHMENT_PREFIX}${crypto.randomUUID()}${ext ? "." + ext : ""}`;
+}
+
+/** 서버가 가진 버퍼를 저장(데이터 이전·테스트용). 저장 키·크기 반환 */
 export async function saveUploadBuffer(
   buf: Buffer,
   originalName: string,
+  contentType?: string | null,
 ): Promise<{ storedName: string; size: number }> {
-  await ensureUploadDir();
-  const ext = extOf(originalName);
-  const storedName = `${crypto.randomUUID()}${ext ? "." + ext : ""}`;
-  await writeFile(path.join(UPLOAD_DIR, storedName), buf);
+  const storedName = newStoredName(originalName);
+  await putObject(storedName, buf, contentType ?? undefined);
   return { storedName, size: buf.length };
 }
 
-/** File을 디스크에 저장하고 저장명·크기 반환 */
-export async function saveUpload(
-  file: File,
+/** 브라우저가 staging/ 에 직접 올린 객체를 정식 키(attachments/…)로 옮긴다 */
+export async function promoteStaged(
+  stagingKey: string,
+  originalName: string,
+  contentType?: string | null,
 ): Promise<{ storedName: string; size: number }> {
-  return saveUploadBuffer(Buffer.from(await file.arrayBuffer()), file.name);
+  if (!stagingKey.startsWith(STAGING_PREFIX)) throw new Error("잘못된 업로드 키입니다.");
+  const head = await headObject(stagingKey);
+  if (!head) throw new Error("업로드된 파일을 찾을 수 없습니다. 다시 올려주세요.");
+  const storedName = newStoredName(originalName);
+  await copyObject(stagingKey, storedName, contentType ?? head.contentType ?? undefined);
+  await deleteObject(stagingKey);
+  return { storedName, size: head.size };
 }
 
-/**
- * UPLOAD_DIR 기준 상대경로의 파일 삭제 — 증빙 첨부는 "UUID.ext", 생성 PDF 는 "generated/{txId}/파일.pdf".
- * 하위 폴더의 마지막 파일이었다면 비게 된 폴더(generated/{txId})도 함께 정리한다.
- */
+/** 저장 키의 객체 삭제 — 첨부 "attachments/UUID.ext", 생성 PDF "generated/{txId}/파일.pdf" */
 export async function deleteUpload(storedName: string): Promise<void> {
-  try {
-    await unlink(path.join(UPLOAD_DIR, storedName));
-  } catch {
-    // 파일이 이미 없으면 무시
-  }
-  const relDir = path.dirname(storedName);
-  if (relDir === ".") return; // UPLOAD_DIR 바로 아래 파일 — 정리할 폴더 없음
-  try {
-    await rmdir(path.join(UPLOAD_DIR, relDir)); // 비어 있을 때만 성공한다
-  } catch {
-    // 다른 파일이 남아 있거나 이미 지워진 폴더면 무시
-  }
+  await deleteObject(storedName);
 }
 
 /** 사람이 읽기 쉬운 파일 크기 */

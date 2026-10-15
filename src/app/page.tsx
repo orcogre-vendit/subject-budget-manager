@@ -45,7 +45,7 @@ export default async function DashboardPage() {
     }),
     prisma.project.findMany({
       where: { active: true },
-      orderBy: [{ code: "desc" }, { id: "desc" }],
+      orderBy: [{ code: "desc" }, { createdAt: "desc" }],
       include: { years: { select: { id: true, budgetCash: true } } },
     }),
     prisma.transaction.groupBy({
@@ -60,7 +60,7 @@ export default async function DashboardPage() {
     }),
     prisma.budgetItem.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.transaction.findMany({
-      orderBy: [{ date: "desc" }, { id: "desc" }],
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: 6,
       include: {
         projectYear: {
@@ -78,7 +78,7 @@ export default async function DashboardPage() {
   const totalRate = executionRate(totalOut, totalBudget);
 
   // 연차별 입출 합계
-  const yearMap = new Map<number, { in: number; out: number }>();
+  const yearMap = new Map<string, { in: number; out: number }>();
   for (const r of txByYear) {
     const e = yearMap.get(r.projectYearId) ?? { in: 0, out: 0 };
     if (r.direction === "IN") e.in += r._sum.amount ?? 0;
@@ -110,7 +110,7 @@ export default async function DashboardPage() {
     .slice(0, 8);
 
   // 비목별 출금 분포
-  const itemOut = new Map<number, number>();
+  const itemOut = new Map<string, number>();
   for (const r of itemAgg) {
     if (r.direction !== "OUT" || r.budgetItemId == null) continue;
     itemOut.set(

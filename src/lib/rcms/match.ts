@@ -3,7 +3,7 @@ import { budgetPathOf } from "@/lib/budget";
 import { norm, parseRcmsBudgetPath } from "./parse";
 
 export type RecLite = {
-  id: number;
+  id: string;
   useDate: Date | null;
   registeredAt: Date | null;
   progress: string | null;
@@ -12,12 +12,12 @@ export type RecLite = {
   useAmount: number;
   vendor: string | null;
   budgetPath: string | null;
-  transactionId: number | null;
+  transactionId: string | null;
   missingSince: Date | null;
 };
 
 export type TxLite = {
-  id: number;
+  id: string;
   date: Date;
   status: string;
   direction: string;
@@ -72,9 +72,9 @@ export function candidates(rec: RecLite, txs: TxLite[]): { tx: TxLite; score: nu
 }
 
 /** 자동 매칭: 금액이 맞고(≥3) 1위가 유일한 경우만. 거래 하나는 한 건에만 */
-export function autoMatch(records: RecLite[], txs: TxLite[]): { recordId: number; txId: number }[] {
-  const taken = new Set<number>();
-  const out: { recordId: number; txId: number }[] = [];
+export function autoMatch(records: RecLite[], txs: TxLite[]): { recordId: string; txId: string }[] {
+  const taken = new Set<string>();
+  const out: { recordId: string; txId: string }[] = [];
   for (const rec of records) {
     if (rec.transactionId) continue;
     const cs = candidates(rec, txs.filter((t) => !taken.has(t.id)));
@@ -92,8 +92,8 @@ export type Warning = {
   level: "danger" | "warn" | "info";
   code: "OVER_BUDGET" | "RCMS_ONLY" | "UNREGISTERED" | "PLAN_DIFF" | "PATH_MISMATCH" | "RCMS_DRAFT" | "TRANSFERRED";
   message: string;
-  txId?: number;
-  recordId?: number;
+  txId?: string;
+  recordId?: string;
 };
 
 export type ItemRow = {
@@ -116,7 +116,7 @@ export function buildItemRows(txs: TxLite[], records: RecLite[]): ItemRow[] {
     if (!r) { r = { name, allocated: 0, rcms: 0, pending: 0, available: 0 }; map.set(name, r); }
     return r;
   };
-  const matchedTx = new Set(records.map((r) => r.transactionId).filter((v): v is number => v !== null));
+  const matchedTx = new Set(records.map((r) => r.transactionId).filter((v): v is string => v !== null));
   for (const tx of txs) {
     if (tx.status === "취소") continue;
     const name = tx.budgetItem?.name ?? "(미분류)";

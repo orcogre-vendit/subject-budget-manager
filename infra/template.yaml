@@ -1,0 +1,262 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  과제관리 시스템(subject-budget-manager) — Next.js on Lambda(Web Adapter) + HTTP API + Aurora DSQL + S3.
+  bizcard/vcmc 스택과 같은 구성. 배포: scripts/deploy.sh
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+  DomainName:
+    Type: String
+    Default: budget.agopher.org
+  HostedZoneId:
+    Type: String
+    Default: Z017601132GM1X5KJO7G2
+  GoogleClientId:
+    Type: String
+    NoEcho: true
+    Default: ""
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+  SessionSecret:
+    Type: String
+    NoEcho: true
+  AuthAllowedDomains:
+    Type: String
+    Default: vendit.co.kr
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+  GeminiModel:
+    Type: String
+    Default: gemini-3.8-flash
+  LambdaAdapterLayerArn:
+    Type: String
+    Default: arn:aws:lambda:ap-northeast-2:753240598075:layer:LambdaAdapterLayerArm64:30
+  BudgetEmail:
+    Type: String
+    Default: orcogre@vendit.co.kr
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    Timeout: 60
+    MemorySize: 1536
+
+Resources:
+  DsqlCluster:
+    Type: AWS::DSQL::Cluster
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DeletionProtectionEnabled: true
+      Tags:
+        - Key: Project
+          Value: budget
+        - Key: Name
+          Value: !Sub budget-${Stage}
+        - Key: Stage
+          Value: !Ref Stage
+
+  FilesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub budget-${Stage}-files-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: [!Sub "https://${DomainName}"]
+            AllowedMethods: [PUT, GET, HEAD]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [ETag]
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-staging
+            Status: Enabled
+            Prefix: staging/
+            ExpirationInDays: 1
+          - Id: expire-old-versions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 90
+          - Id: abort-mpu
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      Tags:
+        - Key: Project
+          Value: budget
+        - Key: Stage
+          Value: !Ref Stage
+
+  FilesBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FilesBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecure
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt FilesBucket.Arn
+              - !Sub "${FilesBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+
+  WebLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/budget-${Stage}-web
+      RetentionInDays: 30
+
+  WebFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub budget-${Stage}-web
+      CodeUri: build/
+      Handler: run.sh
+      Layers: [!Ref LambdaAdapterLayerArn]
+      LoggingConfig:
+        LogGroup: !Ref WebLogGroup
+      Environment:
+        Variables:
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
+          AWS_LWA_PORT: "8080"
+          AWS_LWA_READINESS_CHECK_PATH: /api/health
+          PORT: "8080"
+          HOSTNAME: 127.0.0.1
+          NODE_ENV: production
+          TZ: Asia/Seoul
+          APP_URL: !Sub "https://${DomainName}"
+          DSQL_ENDPOINT: !GetAtt DsqlCluster.Endpoint
+          FILES_BUCKET: !Ref FilesBucket
+          GOOGLE_CLIENT_ID: !Ref GoogleClientId
+          GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
+          SESSION_SECRET: !Ref SessionSecret
+          AUTH_ALLOWED_DOMAINS: !Ref AuthAllowedDomains
+          GEMINI_API_KEY: !Ref GeminiApiKey
+          GEMINI_MODEL: !Ref GeminiModel
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: dsql:DbConnectAdmin
+              Resource: !GetAtt DsqlCluster.ResourceArn
+            - Effect: Allow
+              Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:GetObjectVersion]
+              Resource: !Sub "${FilesBucket.Arn}/*"
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt FilesBucket.Arn
+      Events:
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /
+            Method: ANY
+        Proxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      Domain:
+        DomainName: !Ref DomainName
+        CertificateArn: !Ref Certificate
+        EndpointConfiguration: REGIONAL
+        Route53:
+          HostedZoneId: !Ref HostedZoneId
+
+  DailyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub budget-${Stage}-daily
+        BudgetType: COST
+        TimeUnit: DAILY
+        BudgetLimit:
+          Amount: 2
+          Unit: USD
+        CostFilters:
+          TagKeyValue:
+            - "user:Project$budget"
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetEmail
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub budget-${Stage}-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: 20
+          Unit: USD
+        CostFilters:
+          TagKeyValue:
+            - "user:Project$budget"
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetEmail
+
+Outputs:
+  Url:
+    Value: !Sub "https://${DomainName}"
+  ApiUrl:
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  DsqlEndpoint:
+    Value: !GetAtt DsqlCluster.Endpoint
+  DsqlIdentifier:
+    Value: !GetAtt DsqlCluster.Identifier
+  FilesBucketName:
+    Value: !Ref FilesBucket
+  WebFunctionName:
+    Value: !Ref WebFunction

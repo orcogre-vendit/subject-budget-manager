@@ -2,8 +2,7 @@
 // 레거시(Access 시절·구 표기) 분류에 걸린 거래를 표준 분류로 옮긴 뒤 참조가 남지 않은 레거시 항목을 지운다.
 // 매번 실행해도 안전(upsert·조건부 삭제). 컨테이너 엔트리포인트가 시작 때마다 돌린다.
 import "dotenv/config";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaClient } from "../src/generated/prisma/client";
+import { createPrisma } from "../src/lib/db";
 import {
   LEGACY_DETAILS,
   LEGACY_DETAIL_REMAP,
@@ -17,10 +16,7 @@ import {
 import { findItem, findOrCreateDetail, findOrCreateItem, findOrCreateSub, findSub } from "../src/lib/categories";
 import { renameAttachmentsFor } from "../src/lib/attachmentNames";
 
-const adapter = new PrismaBetterSqlite3({
-  url: process.env.DATABASE_URL ?? "file:./dev.db",
-});
-const prisma = new PrismaClient({ adapter });
+const prisma = createPrisma();
 
 // ── 세목별 증빙 요건 (매뉴얼 표 3-12·3-14·3-15·3-17·3-18·3-23 기준, docs/연구개발비-사용기준-핵심요약.md 4장) ──
 type Req = "required" | "one_of" | "optional";
@@ -194,7 +190,7 @@ const EVIDENCE: { item: string; sub: string; reqs: EvReq[] }[] = [
 ];
 
 /** 정규화로 찾은 행의 표기가 표준과 다르면("연구실 운영비" → "연구실운영비") 표준 표기로 고친다. 같은 이름이 이미 있으면 그대로 둔다 */
-async function renameIfDiffers(kind: "item" | "sub" | "detail", row: { id: number; name: string }, standard: string) {
+async function renameIfDiffers(kind: "item" | "sub" | "detail", row: { id: string; name: string }, standard: string) {
   if (row.name === standard) return;
   try {
     if (kind === "item") await prisma.budgetItem.update({ where: { id: row.id }, data: { name: standard } });

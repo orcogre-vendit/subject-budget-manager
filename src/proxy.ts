@@ -3,7 +3,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, authEnabled, verifySession } from "@/lib/auth/session";
 
-const PUBLIC_PREFIXES = ["/login", "/api/auth/"];
+const PUBLIC_PREFIXES = ["/login", "/api/auth/", "/api/health"];
 
 export function proxy(request: NextRequest) {
   if (!authEnabled()) return NextResponse.next();

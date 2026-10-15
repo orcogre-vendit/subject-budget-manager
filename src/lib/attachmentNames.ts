@@ -6,8 +6,8 @@ import { normalizeFileName } from "./uploadRules";
 
 type Db = Pick<PrismaClient, "transaction" | "attachment">;
 
-/** 거래처·비목이 바뀌면 기존 첨부 이름도 규칙대로 다시 붙인다 (첨부 id 순, 같은 종류는 -2, -3 …). 바뀐 첨부 수를 돌려준다 */
-export async function renameAttachmentsFor(db: Db, transactionId: number): Promise<number> {
+/** 거래처·비목이 바뀌면 기존 첨부 이름도 규칙대로 다시 붙인다 (첨부 업로드 순, 같은 종류는 -2, -3 …). 바뀐 첨부 수를 돌려준다 */
+export async function renameAttachmentsFor(db: Db, transactionId: string): Promise<number> {
   const tx = await db.transaction.findUnique({
     where: { id: transactionId },
     select: { seqNo: true, vendor: true, budgetItem: { select: { name: true } } },
@@ -17,7 +17,7 @@ export async function renameAttachmentsFor(db: Db, transactionId: number): Promi
   const atts = await db.attachment.findMany({
     where: { transactionId },
     select: { id: true, fileName: true, originalName: true, evidenceCode: true },
-    orderBy: { id: "asc" },
+    orderBy: { uploadedAt: "asc" },
   });
   const taken = new Set<string>();
   let changed = 0;

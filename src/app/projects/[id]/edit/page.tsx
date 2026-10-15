@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { idOf } from "@/lib/ids";
 import RecordForm from "@/components/RecordForm";
 import { toFormValues } from "@/lib/form";
 import { PROJECT_FIELDS } from "../../fields";
@@ -14,7 +15,7 @@ export default async function EditProjectPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const projectId = Number(id);
+  const projectId = idOf(id);
   if (!projectId) notFound();
 
   const project = await prisma.project.findUnique({ where: { id: projectId } });

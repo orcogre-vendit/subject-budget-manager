@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { idOf } from "@/lib/ids";
 import { won, ymd } from "@/lib/format";
 import { yearInclude } from "@/lib/rcms/db";
 import { buildItemRows, buildWarnings, candidates, txBudgetPath, type TxLite } from "@/lib/rcms/match";
@@ -23,7 +24,7 @@ function RecStatus({ progress, missingSince }: { progress: string | null; missin
 
 export default async function RcmsYearPage({ params }: { params: Promise<{ yearId: string }> }) {
   const { yearId } = await params;
-  const id = Number(yearId);
+  const id = idOf(yearId);
   if (!id) notFound();
 
   const year = await prisma.projectYear.findUnique({ where: { id }, include: yearInclude });
@@ -34,7 +35,7 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
   const items = buildItemRows(txs, records);
   const warnings = buildWarnings(txs, records, items);
 
-  const matchedTxIds = new Set(records.map((r) => r.transactionId).filter((v): v is number => v !== null));
+  const matchedTxIds = new Set(records.map((r) => r.transactionId).filter((v): v is string => v !== null));
   const pendingTxs = txs.filter((t) => t.direction === "OUT" && t.status !== "취소" && !matchedTxIds.has(t.id));
   const matched = records.filter((r) => r.transactionId);
   const unmatched = records.filter((r) => !r.transactionId);
@@ -43,9 +44,9 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
   const pendingTotal = pendingTxs.reduce((s, t) => s + t.amount, 0);
   const available = year.budgetCash - rcmsTotal - pendingTotal;
   const ledgerHref = `/projects/${year.project.id}/years/${year.id}/ledger`;
-  const editHref = (txId: number) => `${ledgerHref}/${txId}/edit`;
+  const editHref = (txId: string) => `${ledgerHref}/${txId}/edit`;
   const txLabel = (t: TxLite) => `${ymd(t.date)} · ${t.description ?? t.vendor ?? "-"} · ${won(t.amount)}`;
-  const hidden = (recordId: number) => (
+  const hidden = (recordId: string) => (
     <>
       <input type="hidden" name="recordId" value={recordId} />
       <input type="hidden" name="yearId" value={year.id} />

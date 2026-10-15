@@ -59,3 +59,10 @@ prisma/*.db
 
 # 비공개 분석 문서(보안 취약점 포함 — 절대 커밋 금지)
 /_private
+
+# 서버리스 이전 — 마이그레이션 원본(구 홈서버 DB·업로드 복사본)·Lambda 번들·SAM 작업 디렉터리
+/.migration-src
+/infra/build
+/.aws-sam
+/infra/params.*.env
+/infra/packaged.yaml

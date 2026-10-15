@@ -1,11 +1,24 @@
 import type { NextConfig } from "next";
 
+const appHost = (() => {
+  try {
+    return process.env.APP_URL ? new URL(process.env.APP_URL).host : null;
+  } catch {
+    return null;
+  }
+})();
+
 const nextConfig: NextConfig = {
+  // Lambda(Web Adapter) 배포용 — .next/standalone 에 server.js + 필요한 node_modules 만 모은다
+  output: "standalone",
+  // PDF 폰트는 process.cwd()/public/fonts 에서 읽는다 (scripts/build-lambda.mjs 가 public 을 standalone 에 복사)
+  outputFileTracingIncludes: { "/**": ["./public/fonts/**"] },
   experimental: {
     serverActions: {
-      // 증빙 업로드는 서버 액션(FormData)으로 올라간다. 기본 1MB 로는 PDF 한 장도 막히므로
-      // 파일당 20MB × 여러 장 + 폼 데이터를 감안해 넉넉히 잡는다 (파일 개수·크기 검증은 액션 안에서 별도 수행)
-      bodySizeLimit: "110mb",
+      // 증빙 파일은 브라우저→S3 로 직접 올리므로 서버 액션 본문은 폼 데이터 + RCMS 엑셀(≤5MB) 정도. Lambda 요청 한도(6MB) 안.
+      bodySizeLimit: "6mb",
+      // API Gateway 커스텀 도메인 뒤에서 Origin/Host 검사가 어긋나지 않도록 공개 호스트를 허용 목록에
+      ...(appHost ? { allowedOrigins: [appHost] } : {}),
     },
   },
 };

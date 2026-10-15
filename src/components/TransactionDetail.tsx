@@ -65,8 +65,8 @@ export default function TransactionDetail({
   cancelHref,
 }: {
   tx: TxDetail;
-  projectId: number;
-  projectYearId: number;
+  projectId: string;
+  projectYearId: string;
   budgetTree: BudgetTree;
   cancelHref: string;
 }) {

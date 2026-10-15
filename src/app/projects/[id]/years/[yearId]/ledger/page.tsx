@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { idOf } from "@/lib/ids";
 import { won, ymd, executionRate } from "@/lib/format";
 import { seqLabel } from "@/lib/evidenceName";
 import TransactionForm from "@/components/TransactionForm";
@@ -21,10 +22,10 @@ export default async function LedgerPage({
 }) {
   const { id, yearId } = await params;
   const { tx: txParam } = await searchParams;
-  const projectId = Number(id);
-  const projectYearId = Number(yearId);
+  const projectId = idOf(id);
+  const projectYearId = idOf(yearId);
   if (!projectId || !projectYearId) notFound();
-  const selectedId = Number(txParam) || null; // ?tx=ID → 해당 거래 상세를 아래 패널에 연다
+  const selectedId = idOf(txParam); // ?tx=ID → 해당 거래 상세를 아래 패널에 연다
 
   const [year, transactions, budgetTree, selected] = await Promise.all([
     prisma.projectYear.findUnique({
@@ -33,7 +34,7 @@ export default async function LedgerPage({
     }),
     prisma.transaction.findMany({
       where: { projectYearId },
-      orderBy: [{ date: "asc" }, { id: "asc" }],
+      orderBy: [{ date: "asc" }, { seqNo: "asc" }],
       include: {
         budgetItem: { select: { name: true } },
         budgetSubItem: { select: { name: true } },
@@ -51,7 +52,7 @@ export default async function LedgerPage({
   if (!year || year.projectId !== projectId) notFound();
   const detail = selected && selected.projectYearId === projectYearId ? selected : null;
   const ledgerHref = `/projects/${projectId}/years/${projectYearId}/ledger`;
-  const detailHref = (txId: number) => `${ledgerHref}?tx=${txId}#detail`;
+  const detailHref = (txId: string) => `${ledgerHref}?tx=${txId}#detail`;
 
   // 비목별 입금/출금 집계
   const byItem = new Map<string, { in: number; out: number }>();

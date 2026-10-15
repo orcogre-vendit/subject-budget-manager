@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { idOf } from "@/lib/ids";
 import { won, ymd } from "@/lib/format";
 import RecordForm from "@/components/RecordForm";
 import DeleteButton from "@/components/DeleteButton";
@@ -28,7 +29,7 @@ export default async function ProjectDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const projectId = Number(id);
+  const projectId = idOf(id);
   if (!projectId) notFound();
 
   const project = await prisma.project.findUnique({

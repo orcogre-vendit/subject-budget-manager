@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { RESEARCHER_FIELDS } from "./fields";
+import { idOf } from "@/lib/ids";
 
 export type FormState = {
   fieldErrors?: Record<string, string>;
@@ -51,7 +52,7 @@ export async function updateResearcher(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const id = Number(formData.get("id"));
+  const id = idOf(formData.get("id"));
   if (!id) return { error: "잘못된 연구원 ID입니다." };
 
   const data = parseForm(formData);
@@ -68,7 +69,7 @@ export async function updateResearcher(
 }
 
 export async function deleteResearcher(formData: FormData): Promise<void> {
-  const id = Number(formData.get("id"));
+  const id = idOf(formData.get("id"));
   if (!id) return;
   await prisma.researcher.delete({ where: { id } });
   revalidatePath("/researchers");

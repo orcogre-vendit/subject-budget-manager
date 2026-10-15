@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { idOf } from "@/lib/ids";
 import { seqLabel } from "@/lib/evidenceName";
 import TransactionDetail, { txDetailInclude, loadBudgetTree } from "@/components/TransactionDetail";
 
@@ -13,9 +14,9 @@ export default async function EditTransactionPage({
   params: Promise<{ id: string; yearId: string; txId: string }>;
 }) {
   const { id, yearId, txId } = await params;
-  const projectId = Number(id);
-  const projectYearId = Number(yearId);
-  const transactionId = Number(txId);
+  const projectId = idOf(id);
+  const projectYearId = idOf(yearId);
+  const transactionId = idOf(txId);
   if (!projectId || !projectYearId || !transactionId) notFound();
 
   const [tx, budgetTree] = await Promise.all([

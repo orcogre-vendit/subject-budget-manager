@@ -1,12 +1,27 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { EVIDENCE_CODES } from "@/lib/evidence";
 import { ALLOWED_EXT, MAX_UPLOAD_BYTES, extOf, normalizeFileName } from "@/lib/uploadRules";
 import { pickEvidenceFileName, type NamingContext } from "@/lib/evidenceName";
+import { uploadToStaging } from "@/lib/upload-client";
 
-/** name 은 정규화된 표시용 파일명(서버도 같은 규칙으로 저장). file 은 원본 File */
-export type PickedEvidence = { id: number; file: File; name: string; code: string; problem: string | null };
+export type UploadStatus = "uploading" | "done" | "error";
+
+/**
+ * name 은 정규화된 표시용 파일명(서버도 같은 규칙으로 저장). file 은 원본 File.
+ * 파일은 고르는 즉시 S3 staging/ 에 올라가고(key), 폼은 key 만 서버로 보낸다.
+ */
+export type PickedEvidence = {
+  id: number;
+  file: File;
+  name: string;
+  code: string;
+  problem: string | null;
+  status: UploadStatus;
+  key: string | null;
+  error: string | null;
+};
 
 /** 파일명으로 증빙 유형 추측 — 순서대로 첫 매치. 못 맞히면 빈 값(사용자가 고름) */
 const NAME_RULES: [RegExp, string][] = [
@@ -47,15 +62,17 @@ function problemOf(name: string, size: number): string | null {
   return null;
 }
 
-/** 제출될(규칙 통과 + 유형 선택된) 증빙 코드 목록 — 부모의 요건 체크에 쓴다 */
-const codesOf = (list: PickedEvidence[]) => list.filter((p) => !p.problem && p.code).map((p) => p.code);
+/** 제출될(규칙 통과 + 업로드 완료 + 유형 선택된) 증빙 코드 목록 — 부모의 요건 체크에 쓴다 */
+const codesOf = (list: PickedEvidence[]) => list.filter((p) => !p.problem && p.status === "done" && p.code).map((p) => p.code);
+const busyOf = (list: PickedEvidence[]) => list.some((p) => !p.problem && p.status === "uploading");
 
 const human = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
 
 /**
  * 증빙 드롭존 — 파일을 먼저 올리고(드래그앤드롭 또는 클릭), 올라온 파일마다 유형을 고른다.
- * 제출은 파일당 숨은 <input type=file name=evidenceFile> + <select name=evidenceCode> 쌍으로 나가므로
- * 서버는 evidenceFile[i] ↔ evidenceCode[i] 로 짝을 맞춘다. 규칙 위반 파일은 제출에서 제외한다.
+ * 파일은 고르는 즉시 S3 staging/ 으로 직접 올라가고(presigned PUT), 폼에는 파일 대신
+ * evidenceKey / evidenceName / evidenceType / evidenceSize / evidenceCode 묶음이 같은 순서로 실린다.
+ * 업로드 중인 파일이 있으면 evidencePending=1 이 실려 서버가 저장을 거부한다.
  */
 export default function EvidenceDropInput({
   suggestedCodes = [],
@@ -64,6 +81,7 @@ export default function EvidenceDropInput({
   hint,
   onCodesChange,
   onSelectionChange,
+  onBusyChange,
   naming,
 }: {
   suggestedCodes?: string[];
@@ -72,8 +90,10 @@ export default function EvidenceDropInput({
   hint?: string;
   /** 제출될 증빙 코드가 바뀔 때마다 알림 (요건 충족 표시용) */
   onCodesChange?: (codes: string[]) => void;
-  /** AI 분석 등에서 현재 선택 파일을 사용할 때 호출된다. 파일은 아직 서버에 저장되지 않은 상태다. */
+  /** AI 분석 등에서 현재 선택 파일을 사용할 때 호출된다 (업로드 상태 포함) */
   onSelectionChange?: (picked: PickedEvidence[]) => void;
+  /** 업로드 진행 중 여부 — 부모가 제출 버튼을 잠근다 */
+  onBusyChange?: (busy: boolean) => void;
   /** 저장 시 붙을 파일명 미리보기 문맥. taken 은 이미 있는 첨부 이름(중복 번호 계산용) */
   naming?: NamingContext & { taken?: string[] };
 }) {
@@ -82,22 +102,56 @@ export default function EvidenceDropInput({
   const seq = useRef(0);
   const browseRef = useRef<HTMLInputElement>(null);
 
+  // 부모 콜백은 ref 로 들고 있다가 목록이 바뀐 뒤(effect)에 알린다 — 렌더 중 부모 상태를 건드리지 않는다
+  const callbacks = useRef({ onCodesChange, onSelectionChange, onBusyChange });
+  useEffect(() => {
+    callbacks.current = { onCodesChange, onSelectionChange, onBusyChange };
+  });
+  useEffect(() => {
+    const c = callbacks.current;
+    c.onCodesChange?.(codesOf(picked));
+    c.onSelectionChange?.(picked);
+    c.onBusyChange?.(busyOf(picked));
+  }, [picked]);
+  // 언마운트(폼 리셋) 시 부모의 busy 를 풀어준다
+  useEffect(() => () => callbacks.current.onBusyChange?.(false), []);
+
   const suggested = suggestedCodes.filter((c) => EVIDENCE_CODES[c]);
   const others = Object.keys(EVIDENCE_CODES).filter((c) => !suggested.includes(c));
 
-  const commit = (next: PickedEvidence[]) => {
-    setPicked(next);
-    onCodesChange?.(codesOf(next));
-    onSelectionChange?.(next);
+  /** 비동기 업로드 결과를 최신 목록에 반영 (그 사이 다른 파일이 추가·삭제됐어도 안전) */
+  const patch = (id: number, p: Partial<PickedEvidence>) =>
+    setPicked((prev) => prev.map((x) => (x.id === id ? { ...x, ...p } : x)));
+
+  const upload = async (row: PickedEvidence) => {
+    try {
+      const staged = await uploadToStaging(row.file);
+      patch(row.id, { status: "done", key: staged.key, error: null });
+    } catch (e) {
+      patch(row.id, { status: "error", key: null, error: e instanceof Error ? e.message : "업로드 실패" });
+    }
   };
+
   const add = (files: FileList | File[]) => {
     const next: PickedEvidence[] = [...files]
       .filter((f) => f.size > 0)
       .map((f) => {
         const name = normalizeFileName(f.name);
-        return { id: seq.current++, file: f, name, code: guessEvidenceCode(name), problem: problemOf(name, f.size) };
+        const problem = problemOf(name, f.size);
+        return {
+          id: seq.current++,
+          file: f,
+          name,
+          code: guessEvidenceCode(name),
+          problem,
+          status: problem ? "error" : "uploading",
+          key: null,
+          error: null,
+        } satisfies PickedEvidence;
       });
-    if (next.length) commit([...picked, ...next]);
+    if (!next.length) return;
+    setPicked((prev) => [...prev, ...next]);
+    for (const row of next) if (!row.problem) void upload(row);
   };
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -108,15 +162,13 @@ export default function EvidenceDropInput({
     if (e.target.files) add(e.target.files);
     e.target.value = ""; // 같은 파일을 다시 골라도 change 가 나도록
   };
-  const setCode = (id: number, code: string) => commit(picked.map((x) => (x.id === id ? { ...x, code } : x)));
-  const remove = (id: number) => commit(picked.filter((x) => x.id !== id));
-  /** 숨은 file input 에 File 을 심는다 (DataTransfer 로 programmatic 설정). 폼 리셋 뒤에도 매 렌더마다 다시 심는다 */
-  const plant = (file: File) => (el: HTMLInputElement | null) => {
-    if (!el) return;
-    if (el.files?.length === 1 && el.files[0] === file) return;
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    el.files = dt.files;
+  const setCode = (id: number, code: string) => patch(id, { code });
+  const remove = (id: number) => setPicked((prev) => prev.filter((x) => x.id !== id));
+  const retry = (id: number) => {
+    const row = picked.find((x) => x.id === id);
+    if (!row || row.problem) return;
+    patch(id, { status: "uploading", error: null, key: null });
+    void upload({ ...row, status: "uploading" });
   };
   const openBrowse = () => browseRef.current?.click();
 
@@ -126,6 +178,7 @@ export default function EvidenceDropInput({
     const taken = new Set(naming.taken ?? []);
     for (const p of picked) if (!p.problem) previews.set(p.id, pickEvidenceFileName(naming, p.code || null, p.name, taken));
   }
+  const pending = busyOf(picked);
 
   return (
     <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -152,6 +205,7 @@ export default function EvidenceDropInput({
       </div>
       {/* name 없음 → 제출되지 않는 탐색용 input */}
       <input ref={browseRef} type="file" multiple onChange={onBrowse} className="hidden" tabIndex={-1} aria-hidden />
+      {pending && <input type="hidden" name="evidencePending" value="1" />}
 
       {picked.length > 0 && (
         <ul className="mt-2 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
@@ -162,6 +216,13 @@ export default function EvidenceDropInput({
                 <p className="text-xs text-slate-400">
                   {human(p.file.size)}
                   {p.problem && <span className="ml-2 font-medium text-red-600">{p.problem} · 업로드에서 제외</span>}
+                  {!p.problem && p.status === "uploading" && <span className="ml-2 text-blue-600">업로드 중…</span>}
+                  {!p.problem && p.status === "error" && (
+                    <span className="ml-2 font-medium text-red-600">
+                      {p.error ?? "업로드 실패"}{" "}
+                      <button type="button" onClick={() => retry(p.id)} className="underline">다시 시도</button>
+                    </span>
+                  )}
                   {previews.has(p.id) && (
                     <span className="ml-2 text-slate-500">
                       저장 이름 <b className="font-medium text-slate-700">{previews.get(p.id)}</b>
@@ -170,26 +231,31 @@ export default function EvidenceDropInput({
                 </p>
               </div>
               {!p.problem && (
-                <>
-                  <select
-                    name="evidenceCode"
-                    value={p.code}
-                    onChange={(e) => setCode(p.id, e.target.value)}
-                    className={`rounded-md border px-2 py-1.5 text-sm outline-none focus:border-slate-900 sm:w-56 ${
-                      p.code ? "border-slate-300 bg-white" : "border-amber-400 bg-amber-50"
-                    }`}
-                  >
-                    <option value="">유형 선택…</option>
-                    {suggested.length > 0 && (
-                      <optgroup label="이 세목의 요건">
-                        {suggested.map((c) => <option key={c} value={c}>{EVIDENCE_CODES[c]}</option>)}
-                      </optgroup>
-                    )}
-                    <optgroup label={suggested.length ? "기타" : "증빙 유형"}>
-                      {others.map((c) => <option key={c} value={c}>{EVIDENCE_CODES[c]}</option>)}
+                <select
+                  name={p.status === "done" ? "evidenceCode" : undefined}
+                  value={p.code}
+                  onChange={(e) => setCode(p.id, e.target.value)}
+                  className={`rounded-md border px-2 py-1.5 text-sm outline-none focus:border-slate-900 sm:w-56 ${
+                    p.code ? "border-slate-300 bg-white" : "border-amber-400 bg-amber-50"
+                  }`}
+                >
+                  <option value="">유형 선택…</option>
+                  {suggested.length > 0 && (
+                    <optgroup label="이 세목의 요건">
+                      {suggested.map((c) => <option key={c} value={c}>{EVIDENCE_CODES[c]}</option>)}
                     </optgroup>
-                  </select>
-                  <input type="file" name="evidenceFile" ref={plant(p.file)} className="hidden" tabIndex={-1} aria-hidden />
+                  )}
+                  <optgroup label={suggested.length ? "기타" : "증빙 유형"}>
+                    {others.map((c) => <option key={c} value={c}>{EVIDENCE_CODES[c]}</option>)}
+                  </optgroup>
+                </select>
+              )}
+              {!p.problem && p.status === "done" && p.key && (
+                <>
+                  <input type="hidden" name="evidenceKey" value={p.key} />
+                  <input type="hidden" name="evidenceName" value={p.name} />
+                  <input type="hidden" name="evidenceType" value={p.file.type || "application/octet-stream"} />
+                  <input type="hidden" name="evidenceSize" value={p.file.size} />
                 </>
               )}
               <button

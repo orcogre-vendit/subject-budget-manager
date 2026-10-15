@@ -1,6 +1,7 @@
 // 연구실 과제 예산집행 관리 시스템 — Prisma schema
 // 레거시 MS Access(과제관리_new_Backup.accdb)를 정규화하여 재구축.
-// SQLite로 시작(enum 미지원 → String 사용, 금액은 원 단위 Int).
+// SQLite 로 시작했다가 Aurora DSQL(PostgreSQL 호환, 서버리스)로 이전. enum 대신 String, 금액은 원 단위 Int.
+// DSQL 제약: id 는 UUID(시퀀스 대신), 인덱스는 ASYNC, FK 는 지원하되 CASCADE 가 트랜잭션 3,000행 한도에 포함.
 // 자세한 설계 배경은 legacy/ 및 프로젝트 메모리 참고.
 
 generator client {
@@ -9,12 +10,12 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 /// 비목 (예산 대분류) — 정부 R&D 표준 분류 최상위
 model BudgetItem {
-  id           Int             @id @default(autoincrement())
+  id           String          @id @default(uuid()) @db.Uuid
   name         String          @unique
   sortOrder    Int             @default(0)
   subItems     BudgetSubItem[]
@@ -23,10 +24,10 @@ model BudgetItem {
 
 /// 세목 (예산 중분류)
 model BudgetSubItem {
-  id           Int                @id @default(autoincrement())
-  name         String
-  budgetItemId Int
-  budgetItem   BudgetItem         @relation(fields: [budgetItemId], references: [id])
+  id                   String                @id @default(uuid()) @db.Uuid
+  name                 String
+  budgetItemId         String                @db.Uuid
+  budgetItem           BudgetItem            @relation(fields: [budgetItemId], references: [id])
   detailItems          BudgetDetailItem[]
   transactions         Transaction[]
   evidenceRequirements EvidenceRequirement[]
@@ -36,9 +37,9 @@ model BudgetSubItem {
 
 /// 세세목 (예산 소분류)
 model BudgetDetailItem {
-  id              Int           @id @default(autoincrement())
+  id              String        @id @default(uuid()) @db.Uuid
   name            String
-  budgetSubItemId Int
+  budgetSubItemId String        @db.Uuid
   budgetSubItem   BudgetSubItem @relation(fields: [budgetSubItemId], references: [id])
   transactions    Transaction[]
 
@@ -47,7 +48,7 @@ model BudgetDetailItem {
 
 /// 연구원 명단 — ⚠️ 민감정보(주민번호/계좌/주소) 평문 저장(현 단계 결정)
 model Researcher {
-  id              Int       @id @default(autoincrement())
+  id              String    @id @default(uuid()) @db.Uuid
   employeeNo      String? // 학번/사번
   name            String // 이름
   ssn             String? // 주민등록번호
@@ -69,12 +70,12 @@ model Researcher {
 
 /// 과제 (마스터) — 레거시 과제목록
 model Project {
-  id              Int           @id @default(autoincrement())
+  id              String        @id @default(uuid()) @db.Uuid
   code            String?       @unique // 과제번호
   name            String // 과제명
   businessName    String? // 사업명
   piName          String? // 연구책임(텍스트, 레거시 호환)
-  piId            Int? // 연구책임 연구원 FK(선택)
+  piId            String?       @db.Uuid // 연구책임 연구원 FK(선택)
   pi              Researcher?   @relation("PI", fields: [piId], references: [id])
   managerName     String? // 과제담당
   hostOrg         String? // 주관연구기관
@@ -97,8 +98,8 @@ model Project {
 
 /// 연차(차수/회계연도) — 레거시 "ITRC3년차" 같은 테이블 분할을 행으로 정규화
 model ProjectYear {
-  id           Int           @id @default(autoincrement())
-  projectId    Int
+  id           String        @id @default(uuid()) @db.Uuid
+  projectId    String        @db.Uuid
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   yearNo       Int // 1,2,3 년차
   label        String? // 표시용 라벨(예: "ITRC3년차")
@@ -118,16 +119,16 @@ model ProjectYear {
 /// 집행 내역 (원장) — 레거시 20여 개 장부 테이블을 단일 테이블로 통합
 /// 잔액 = Σ(direction=IN) − Σ(direction=OUT). 세목/비목 변경은 IN+OUT 쌍거래.
 model Transaction {
-  id                 Int               @id @default(autoincrement())
-  projectYearId      Int
-  projectYear        ProjectYear       @relation(fields: [projectYearId], references: [id], onDelete: Cascade)
+  id                 String              @id @default(uuid()) @db.Uuid
+  projectYearId      String              @db.Uuid
+  projectYear        ProjectYear         @relation(fields: [projectYearId], references: [id], onDelete: Cascade)
   date               DateTime // 날짜
-  status             String            @default("신청") // 상태: 신청/완료 등
+  status             String              @default("신청") // 상태: 신청/완료 등
   direction          String // 입출구분: IN(입금) | OUT(출금)
   amount             Int // 공급가액(원, 항상 양수) — 연구비 집행분. 잔액 계산은 이 값만 사용
   description        String? // 적요
-  vatRate            Int               @default(10) // 부가세율(%), 면세는 0
-  vatAmount          Int               @default(0) // 부가세(원) — 회사 자금, 잔액 계산에서 항상 제외
+  vatRate            Int                 @default(10) // 부가세율(%), 면세는 0
+  vatAmount          Int                 @default(0) // 부가세(원) — 회사 자금, 잔액 계산에서 항상 제외
   vendor             String? // 거래처
   vendorBank         String?
   vendorAccount      String?
@@ -138,20 +139,20 @@ model Transaction {
   inspectionDate     DateTime? // 검수일
   installLocation    String? // 설치(납품)장소 — 검수확인서 표기
   paymentDueDate     DateTime? // 지급기한
-  budgetItemId       Int?
-  budgetItem         BudgetItem?       @relation(fields: [budgetItemId], references: [id])
-  budgetSubItemId    Int?
-  budgetSubItem      BudgetSubItem?    @relation(fields: [budgetSubItemId], references: [id])
-  budgetDetailItemId Int?
-  budgetDetailItem   BudgetDetailItem? @relation(fields: [budgetDetailItemId], references: [id])
+  budgetItemId       String?             @db.Uuid
+  budgetItem         BudgetItem?         @relation(fields: [budgetItemId], references: [id])
+  budgetSubItemId    String?             @db.Uuid
+  budgetSubItem      BudgetSubItem?      @relation(fields: [budgetSubItemId], references: [id])
+  budgetDetailItemId String?             @db.Uuid
+  budgetDetailItem   BudgetDetailItem?   @relation(fields: [budgetDetailItemId], references: [id])
   plannedAmount      Int? // 품의 시점 공급가액 — RCMS 매칭으로 amount 가 실집행액으로 갱신될 때 보존
   seqNo              Int? // 연차 안의 거래 연번(1부터, 생성 순). 첨부 파일명 "01-…" 의 번호. 삭제돼도 재사용하지 않음
   attachments        Attachment[]
   items              TransactionItem[]
   documents          GeneratedDocument[]
   rcmsRecord         RcmsRecord?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@index([projectYearId])
   @@index([budgetItemId])
@@ -162,11 +163,11 @@ model Transaction {
 /// RCMS "연구비 이체 실행 대상 목록" 엑셀에서 가져온 사용등록 건 — 실행된 집행의 원본(source of truth).
 /// RCMS 는 고유 ID 를 내보내지 않으므로 key 는 (과제번호·등록일시·사용일자·사용금액·거래처·품목) 해시.
 model RcmsRecord {
-  id            Int          @id @default(autoincrement())
+  id            String       @id @default(uuid()) @db.Uuid
   key           String       @unique
-  projectYearId Int
+  projectYearId String       @db.Uuid
   projectYear   ProjectYear  @relation(fields: [projectYearId], references: [id], onDelete: Cascade)
-  transactionId Int?         @unique // 매칭된 품의(우리 장부 거래)
+  transactionId String?      @unique @db.Uuid // 매칭된 품의(우리 장부 거래)
   transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
   matchMethod   String? // auto | manual | created
   rcmsProjectNo String // 과제번호
@@ -200,7 +201,7 @@ model RcmsRecord {
 
 /// RCMS 엑셀 가져오기 이력
 model RcmsImport {
-  id           Int      @id @default(autoincrement())
+  id           String   @id @default(uuid()) @db.Uuid
   fileName     String
   rowCount     Int
   newCount     Int
@@ -213,8 +214,8 @@ model RcmsImport {
 
 /// 증빙 첨부 — Access 첨부필드 대체, 파일은 디스크에 저장
 model Attachment {
-  id            Int         @id @default(autoincrement())
-  transactionId Int
+  id            String      @id @default(uuid()) @db.Uuid
+  transactionId String      @db.Uuid
   transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   fileName      String // 표시·다운로드 파일명 — 규칙 "연번-증빙종류-거래처-비목.ext" 로 자동 부여
   originalName  String? // 업로드 당시 원본 파일명(정규화만 적용)
@@ -227,8 +228,8 @@ model Attachment {
 
 /// 거래 품목 — 품의서·검수확인서 표에 들어가는 라인아이템
 model TransactionItem {
-  id            Int         @id @default(autoincrement())
-  transactionId Int
+  id            String      @id @default(uuid()) @db.Uuid
+  transactionId String      @db.Uuid
   transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   name          String // 품목명
   spec          String? // 규격
@@ -242,10 +243,10 @@ model TransactionItem {
 
 /// 생성 서류 — 품의서 / 검수확인서 / 지출결의 본문 / 예산·연구원 대비표
 model GeneratedDocument {
-  id            Int          @id @default(autoincrement())
-  transactionId Int?
+  id            String       @id @default(uuid()) @db.Uuid
+  transactionId String?      @db.Uuid
   transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  projectYearId Int? // 대비표 등 연차 단위 서류
+  projectYearId String?      @db.Uuid // 대비표 등 연차 단위 서류
   templateCode  String // PURCHASE_REQUEST | INSPECTION_CERT | EXPENSE_REPORT | EXPENSE_REPORT_VAT | BUDGET_DIFF | RESEARCHER_DIFF
   format        String // text | pdf
   content       String? // text 본문
@@ -258,8 +259,8 @@ model GeneratedDocument {
 
 /// 세목별 필수 증빙 요건 (seed) — requirement: required | one_of | optional
 model EvidenceRequirement {
-  id              Int           @id @default(autoincrement())
-  budgetSubItemId Int
+  id              String        @id @default(uuid()) @db.Uuid
+  budgetSubItemId String        @db.Uuid
   budgetSubItem   BudgetSubItem @relation(fields: [budgetSubItemId], references: [id], onDelete: Cascade)
   code            String // TAX_INVOICE, CARD_SLIP, STATEMENT, PURCHASE_REQUEST, INSPECTION_CERT, ...
   label           String

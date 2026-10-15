@@ -1,10 +1,9 @@
 // Transaction(+관계) → 서류 템플릿 문맥(DocContext) 조립
-import { readFile } from "fs/promises";
-import path from "path";
 import type { Prisma } from "@/generated/prisma/client";
 import { ymd } from "@/lib/format";
 import { budgetPathOf } from "@/lib/budget";
-import { UPLOAD_DIR, extOf } from "@/lib/uploads";
+import { extOf } from "@/lib/uploadRules";
+import { getObject } from "@/lib/storage";
 import { sanitizeJpeg } from "@/lib/pdf/jpeg";
 import { probeImage } from "@/lib/pdf/probe";
 import type { DocContext, DocItem, DocPhoto } from "@/lib/templates/types";
@@ -40,7 +39,7 @@ export function summarizeItems(items: { name: string }[], fallback?: string | nu
 }
 
 /**
- * 검수 사진 첨부(INSPECTION_PHOTO)를 디스크에서 읽어 PDF 삽입용 버퍼로.
+ * 검수 사진 첨부(INSPECTION_PHOTO)를 S3 에서 읽어 PDF 삽입용 버퍼로.
  * JPEG 는 부가 세그먼트를 걷어내고(아이폰 사진 대응), 파서를 미리 돌려 못 넣는 파일은 data:null(파일명만 표기)로 둔다.
  */
 export async function loadInspectionPhotos(tx: TxForDoc): Promise<DocPhoto[]> {
@@ -50,11 +49,11 @@ export async function loadInspectionPhotos(tx: TxForDoc): Promise<DocPhoto[]> {
       const ext = extOf(a.storedName);
       if (!PDF_IMAGE_EXT.has(ext)) return { caption: a.fileName, data: null };
       try {
-        const raw = await readFile(path.join(UPLOAD_DIR, a.storedName));
+        const raw = await getObject(a.storedName);
         const data = ext === "png" ? raw : sanitizeJpeg(raw);
         return { caption: a.fileName, data: (await probeImage(data)) ? data : null };
       } catch {
-        return { caption: a.fileName, data: null }; // 디스크에서 유실된 파일
+        return { caption: a.fileName, data: null }; // 저장소에서 유실된 파일
       }
     }),
   );

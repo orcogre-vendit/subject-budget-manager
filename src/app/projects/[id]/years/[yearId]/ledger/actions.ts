@@ -5,14 +5,16 @@ import { redirect } from "next/navigation";
 import { createElement } from "react";
 import { prisma } from "@/lib/prisma";
 import type { FormState } from "@/app/projects/actions";
+import { idOf } from "@/lib/ids";
 import {
-  saveUploadBuffer,
+  promoteStaged,
   deleteUpload,
   extOf,
   ALLOWED_EXT,
   MAX_UPLOAD_BYTES,
-  looksEncryptedPdf,
+  looksEncryptedPdfAt,
 } from "@/lib/uploads";
+import { STAGING_PREFIX, headObject } from "@/lib/storage";
 import { normalizeFileName } from "@/lib/uploadRules";
 import { pickEvidenceFileName, type NamingContext } from "@/lib/evidenceName";
 import { nextSeqNo } from "@/lib/seq";
@@ -30,10 +32,10 @@ import { probeImage } from "@/lib/pdf/probe";
 import InspectionCert from "@/lib/pdf/InspectionCert";
 import PurchaseRequest from "@/lib/pdf/PurchaseRequest";
 
-function ledgerPath(projectId: number, yearId: number) {
+function ledgerPath(projectId: string, yearId: string) {
   return `/projects/${projectId}/years/${yearId}/ledger`;
 }
-function txEditPath(projectId: number, yearId: number, txId: number) {
+function txEditPath(projectId: string, yearId: string, txId: string) {
   return `/projects/${projectId}/years/${yearId}/ledger/${txId}/edit`;
 }
 
@@ -118,6 +120,7 @@ function validateTx(raw: Record<string, string>, items: ItemIn[]): Record<string
       e.amount = items.length ? "품목 단가를 입력하거나 공급가액을 직접 입력하세요." : "금액은 0보다 커야 합니다.";
   }
   if (!raw.budgetItemId) e.budgetItemId = "비목을 선택하세요.";
+  else if (!idOf(raw.budgetItemId)) e.budgetItemId = "비목이 올바르지 않습니다.";
   if (raw.vatRate !== "") {
     const r = Number(raw.vatRate);
     if (!Number.isInteger(r) || r < 0 || r > 100) e.vatRate = "부가세율은 0~100 정수여야 합니다.";
@@ -142,8 +145,7 @@ function deriveMoney(raw: Record<string, string>, items: ItemIn[]) {
 
 /** 비목 아래로 세목·세세목을 이름으로 찾거나 새로 등록(find-or-create). 띄어쓰기·가운뎃점 차이는 기존 항목으로 맞춘다 */
 async function resolveCategory(raw: Record<string, string>) {
-  const budgetItemId = raw.budgetItemId ? Number(raw.budgetItemId) : null;
-  return resolveSubAndDetail(prisma, budgetItemId, raw.budgetSubItemName, raw.budgetDetailItemName);
+  return resolveSubAndDetail(prisma, idOf(raw.budgetItemId), raw.budgetSubItemName, raw.budgetDetailItemName);
 }
 
 const toDate = (s: string) => (s ? new Date(s) : null);
@@ -179,22 +181,43 @@ function txData(
 const itemRows = (items: ItemIn[]) => items.map((it, i) => ({ ...it, sortOrder: i }));
 
 // ---------- 증빙 파일 공통 ----------
+// 파일은 브라우저가 S3 staging/ 에 직접 올리고, 폼에는 evidenceKey/Name/Type/Size/Code 묶음이 같은 순서로 실린다.
 
-/** RCMS 업로드 요건 검증 — 통과하면 읽어둔 버퍼를 돌려준다 (저장 시 재사용) */
-async function checkEvidenceFile(file: File): Promise<{ buf: Buffer } | { error: string }> {
-  if (file.size > MAX_UPLOAD_BYTES) return { error: `'${file.name}' 은(는) 20MB 를 넘습니다.` };
-  if (!ALLOWED_EXT.has(extOf(file.name)))
-    return { error: `'${file.name}' 형식은 허용되지 않습니다. (PDF·이미지·오피스·HWP)` };
-  const buf = Buffer.from(await file.arrayBuffer());
-  if (looksEncryptedPdf(buf, file.name))
-    return { error: `'${file.name}' 은(는) 암호화(DRM)된 PDF 라 RCMS 에 올릴 수 없습니다. 암호를 해제한 파일을 올려주세요.` };
-  return { buf };
+type EvidenceRow = { key: string; name: string; type: string; size: number; code: string | null };
+
+/** 폼의 증빙 줄 읽기 — 업로드가 끝나지 않은 줄이 있으면(evidencePending) 저장을 거부 */
+function pickEvidenceRows(fd: FormData): { rows: EvidenceRow[]; error?: string } {
+  if (fd.get("evidencePending")) return { rows: [], error: "증빙 업로드가 끝나기 전에 저장했습니다. 업로드가 끝난 뒤 다시 시도하세요." };
+  const keys = fd.getAll("evidenceKey").map((v) => String(v ?? "").trim());
+  const names = fd.getAll("evidenceName").map((v) => normalizeFileName(String(v ?? "")));
+  const types = fd.getAll("evidenceType").map((v) => String(v ?? "").trim() || "application/octet-stream");
+  const sizes = fd.getAll("evidenceSize").map((v) => Number(v));
+  const codes = fd.getAll("evidenceCode").map((c) => String(c ?? "").trim() || null);
+  const rows: EvidenceRow[] = [];
+  keys.forEach((key, i) => {
+    if (!key) return;
+    rows.push({ key, name: names[i] ?? "", type: types[i] ?? "application/octet-stream", size: sizes[i] ?? 0, code: codes[i] ?? null });
+  });
+  return { rows };
+}
+
+/** RCMS 업로드 요건 검증 — S3 에 실제로 올라갔는지, 크기·형식·PDF 암호화까지 본다 */
+async function checkEvidence(row: EvidenceRow): Promise<{ size: number } | { error: string }> {
+  if (!row.key.startsWith(STAGING_PREFIX) || row.key.includes("..")) return { error: "잘못된 업로드 키입니다." };
+  if (!row.name || !ALLOWED_EXT.has(extOf(row.name)))
+    return { error: `'${row.name || row.key}' 형식은 허용되지 않습니다. (PDF·이미지·오피스·HWP)` };
+  const head = await headObject(row.key);
+  if (!head) return { error: `'${row.name}' 업로드가 확인되지 않습니다. 다시 올려주세요.` };
+  if (head.size > MAX_UPLOAD_BYTES) return { error: `'${row.name}' 은(는) 20MB 를 넘습니다.` };
+  if (await looksEncryptedPdfAt(row.key, head.size, row.name))
+    return { error: `'${row.name}' 은(는) 암호화(DRM)된 PDF 라 RCMS 에 올릴 수 없습니다. 암호를 해제한 파일을 올려주세요.` };
+  return { size: head.size };
 }
 
 type StoreContext = NamingContext & { taken: Set<string> };
 
 /** 파일명 규칙에 필요한 거래 정보 + 이미 쓰인 첨부 이름 */
-async function namingContext(transactionId: number): Promise<StoreContext> {
+async function namingContext(transactionId: string): Promise<StoreContext> {
   const tx = await prisma.transaction.findUnique({
     where: { id: transactionId },
     select: {
@@ -212,25 +235,14 @@ async function namingContext(transactionId: number): Promise<StoreContext> {
   };
 }
 
-/** 저장 — 표시 이름은 "연번-증빙종류-거래처-비목.ext" 규칙으로, 원본 이름은 originalName 에 보관 */
-async function storeAttachment(transactionId: number, ctx: StoreContext, file: File, buf: Buffer, evidenceCode: string | null) {
-  const originalName = normalizeFileName(file.name);
-  const fileName = pickEvidenceFileName(ctx, evidenceCode, originalName, ctx.taken);
-  const { storedName, size } = await saveUploadBuffer(buf, originalName);
+/** 저장 — staging 객체를 attachments/ 로 옮기고, 표시 이름은 "연번-증빙종류-거래처-비목.ext" 규칙으로, 원본 이름은 originalName 에 보관 */
+async function storeAttachment(transactionId: string, ctx: StoreContext, row: EvidenceRow) {
+  const originalName = normalizeFileName(row.name);
+  const fileName = pickEvidenceFileName(ctx, row.code, originalName, ctx.taken);
+  const { storedName, size } = await promoteStaged(row.key, originalName, row.type);
   await prisma.attachment.create({
-    data: { transactionId, fileName, originalName, storedName, mimeType: file.type || null, size, evidenceCode },
+    data: { transactionId, fileName, originalName, storedName, mimeType: row.type || null, size, evidenceCode: row.code },
   });
-}
-
-/** 거래 추가 폼의 증빙 줄 — evidenceCode[i] 와 evidenceFile[i] 는 같은 순서로 들어온다. 파일 없는 줄은 무시 */
-function pickEvidenceRows(fd: FormData): { file: File; code: string | null }[] {
-  const files = fd.getAll("evidenceFile");
-  const codes = fd.getAll("evidenceCode").map((c) => String(c ?? "").trim() || null);
-  const out: { file: File; code: string | null }[] = [];
-  files.forEach((f, i) => {
-    if (f instanceof File && f.size > 0 && f.name) out.push({ file: f, code: codes[i] ?? null });
-  });
-  return out;
 }
 
 // ---------- 거래 ----------
@@ -239,8 +251,8 @@ export async function createTransaction(
   _prev: FormState,
   fd: FormData,
 ): Promise<FormState> {
-  const projectId = Number(fd.get("projectId"));
-  const projectYearId = Number(fd.get("projectYearId"));
+  const projectId = idOf(fd.get("projectId"));
+  const projectYearId = idOf(fd.get("projectYearId"));
   if (!projectId || !projectYearId) return { error: "잘못된 연차입니다." };
 
   const raw = parseTx(fd);
@@ -249,14 +261,14 @@ export async function createTransaction(
   if (parsed.error) fieldErrors.items = parsed.error;
 
   // 함께 올린 증빙 — 거래를 만들기 전에 전부 검증해 반쪽 저장을 막는다
-  const evidence: { file: File; code: string | null; buf: Buffer }[] = [];
-  for (const row of pickEvidenceRows(fd)) {
-    const c = await checkEvidenceFile(row.file);
+  const picked = pickEvidenceRows(fd);
+  if (picked.error) fieldErrors.evidenceFile = picked.error;
+  for (const row of picked.rows) {
+    const c = await checkEvidence(row);
     if ("error" in c) {
       fieldErrors.evidenceFile = c.error;
       break;
     }
-    evidence.push({ ...row, buf: c.buf });
   }
   if (Object.keys(fieldErrors).length) return { fieldErrors, values: raw };
 
@@ -271,7 +283,7 @@ export async function createTransaction(
     },
   });
   const ctx = await namingContext(tx.id);
-  for (const e of evidence) await storeAttachment(tx.id, ctx, e.file, e.buf, e.code);
+  for (const row of picked.rows) await storeAttachment(tx.id, ctx, row);
 
   revalidatePath(ledgerPath(projectId, projectYearId));
   revalidatePath(`/projects/${projectId}`);
@@ -282,9 +294,9 @@ export async function updateTransaction(
   _prev: FormState,
   fd: FormData,
 ): Promise<FormState> {
-  const id = Number(fd.get("id"));
-  const projectId = Number(fd.get("projectId"));
-  const projectYearId = Number(fd.get("projectYearId"));
+  const id = idOf(fd.get("id"));
+  const projectId = idOf(fd.get("projectId"));
+  const projectYearId = idOf(fd.get("projectYearId"));
   if (!id || !projectId || !projectYearId) return { error: "잘못된 거래입니다." };
 
   const raw = parseTx(fd);
@@ -309,11 +321,11 @@ export async function updateTransaction(
 }
 
 export async function deleteTransaction(fd: FormData): Promise<void> {
-  const id = Number(fd.get("id"));
-  const projectId = Number(fd.get("projectId"));
-  const projectYearId = Number(fd.get("projectYearId"));
+  const id = idOf(fd.get("id"));
+  const projectId = idOf(fd.get("projectId"));
+  const projectYearId = idOf(fd.get("projectYearId"));
   if (!id) return;
-  // 첨부·생성PDF 파일도 디스크에서 제거 (DB 레코드는 cascade)
+  // 첨부·생성PDF 파일도 저장소에서 제거 (DB 레코드는 cascade)
   const [atts, docs] = await Promise.all([
     prisma.attachment.findMany({ where: { transactionId: id }, select: { storedName: true } }),
     prisma.generatedDocument.findMany({
@@ -334,28 +346,27 @@ export async function deleteTransaction(fd: FormData): Promise<void> {
 
 // ---------- 증빙 첨부 ----------
 
-/** 거래 수정 화면 — 드롭존에 올린 여러 증빙을 한 번에 업로드 (evidenceFile[i] ↔ evidenceCode[i]) */
+/** 거래 수정 화면 — 드롭존에 올린 여러 증빙을 한 번에 거래에 붙인다 */
 export async function uploadAttachments(
   _prev: FormState,
   fd: FormData,
 ): Promise<FormState> {
-  const transactionId = Number(fd.get("transactionId"));
-  const projectId = Number(fd.get("projectId"));
-  const projectYearId = Number(fd.get("projectYearId"));
+  const transactionId = idOf(fd.get("transactionId"));
+  const projectId = idOf(fd.get("projectId"));
+  const projectYearId = idOf(fd.get("projectYearId"));
   if (!transactionId || !projectId || !projectYearId) return { error: "잘못된 거래입니다." };
 
-  const rows = pickEvidenceRows(fd);
-  if (!rows.length) return { fieldErrors: { file: "파일을 올려주세요." } };
+  const picked = pickEvidenceRows(fd);
+  if (picked.error) return { fieldErrors: { file: picked.error } };
+  if (!picked.rows.length) return { fieldErrors: { file: "파일을 올려주세요." } };
 
   // 전부 검증한 뒤 저장 — 중간에 실패해 일부만 올라가는 일을 막는다
-  const checked: { file: File; code: string | null; buf: Buffer }[] = [];
-  for (const row of rows) {
-    const c = await checkEvidenceFile(row.file);
+  for (const row of picked.rows) {
+    const c = await checkEvidence(row);
     if ("error" in c) return { fieldErrors: { file: c.error } };
-    checked.push({ ...row, buf: c.buf });
   }
   const ctx = await namingContext(transactionId);
-  for (const c of checked) await storeAttachment(transactionId, ctx, c.file, c.buf, c.code);
+  for (const row of picked.rows) await storeAttachment(transactionId, ctx, row);
 
   revalidatePath(txEditPath(projectId, projectYearId, transactionId));
   revalidatePath(ledgerPath(projectId, projectYearId));
@@ -363,16 +374,16 @@ export async function uploadAttachments(
 }
 
 export async function deleteAttachment(fd: FormData): Promise<void> {
-  const id = Number(fd.get("id"));
+  const id = idOf(fd.get("id"));
   if (!id) return;
   const att = await prisma.attachment.findUnique({ where: { id } });
   if (!att) return;
   await prisma.attachment.delete({ where: { id } });
   await deleteUpload(att.storedName);
 
-  const projectId = Number(fd.get("projectId"));
-  const projectYearId = Number(fd.get("projectYearId"));
-  const transactionId = Number(fd.get("transactionId"));
+  const projectId = idOf(fd.get("projectId"));
+  const projectYearId = idOf(fd.get("projectYearId"));
+  const transactionId = idOf(fd.get("transactionId"));
   if (projectId && projectYearId && transactionId) {
     revalidatePath(txEditPath(projectId, projectYearId, transactionId));
     revalidatePath(ledgerPath(projectId, projectYearId));
@@ -384,9 +395,9 @@ export async function deleteAttachment(fd: FormData): Promise<void> {
 //               | EXPENSE_REPORT(지결 연구비) | EXPENSE_REPORT_VAT(지결 부가세, vatAmount>0)
 
 export async function generateDocument(fd: FormData): Promise<void> {
-  const transactionId = Number(fd.get("transactionId"));
-  const projectId = Number(fd.get("projectId"));
-  const projectYearId = Number(fd.get("projectYearId"));
+  const transactionId = idOf(fd.get("transactionId"));
+  const projectId = idOf(fd.get("projectId"));
+  const projectYearId = idOf(fd.get("projectYearId"));
   const templateCode = String(fd.get("templateCode") ?? "");
   if (!transactionId || !projectId || !projectYearId) return;
 
@@ -453,16 +464,16 @@ export async function generateDocument(fd: FormData): Promise<void> {
 }
 
 export async function deleteDocument(fd: FormData): Promise<void> {
-  const id = Number(fd.get("id"));
+  const id = idOf(fd.get("id"));
   if (!id) return;
   const doc = await prisma.generatedDocument.findUnique({ where: { id } });
   if (!doc) return;
   await prisma.generatedDocument.delete({ where: { id } });
   if (doc.filePath) await deleteUpload(doc.filePath);
 
-  const projectId = Number(fd.get("projectId"));
-  const projectYearId = Number(fd.get("projectYearId"));
-  const transactionId = Number(fd.get("transactionId"));
+  const projectId = idOf(fd.get("projectId"));
+  const projectYearId = idOf(fd.get("projectYearId"));
+  const transactionId = idOf(fd.get("transactionId"));
   if (projectId && projectYearId && transactionId)
     revalidatePath(txEditPath(projectId, projectYearId, transactionId));
 }
