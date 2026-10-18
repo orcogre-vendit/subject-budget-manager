@@ -10,7 +10,7 @@ Parameters:
     Default: prod
   DomainName:
     Type: String
-    Default: budget.agopher.org
+    Default: subjects.agopher.org
   HostedZoneId:
     Type: String
     Default: Z017601132GM1X5KJO7G2

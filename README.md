@@ -18,7 +18,7 @@
 - [Next.js 16](https://nextjs.org) (App Router) · React 19 · TypeScript
 - [Prisma 7](https://www.prisma.io) + [Amazon Aurora DSQL](https://aws.amazon.com/rds/aurora/dsql/) (PostgreSQL 호환 서버리스, IAM 토큰 인증)
 - 파일 저장소: Amazon S3 (브라우저 → S3 직접 업로드, presigned URL 다운로드)
-- 실행: AWS Lambda (Web Adapter) + HTTP API Gateway, `budget.agopher.org`
+- 실행: AWS Lambda (Web Adapter) + HTTP API Gateway, `subjects.agopher.org`
 - Tailwind CSS v4
 - 서버 액션 기반 폼 처리 / 서버 렌더 차트(의존성 없음)
 
