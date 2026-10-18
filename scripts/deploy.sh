@@ -16,7 +16,9 @@ STACK="budget-${STAGE}"
 REGION="${AWS_REGION:-ap-northeast-2}"
 PARAMS_FILE="infra/params.${STAGE}.env"
 
-overrides=("Stage=${STAGE}")
+# 템플릿 Default 는 스택 생성 때만 적용되고 update 에선 기존 값이 유지되므로 도메인은 항상 명시한다
+DOMAIN="${DOMAIN:-subjects.agopher.org}"
+overrides=("Stage=${STAGE}" "DomainName=${DOMAIN}")
 if [[ -f "$PARAMS_FILE" ]]; then
   while IFS='=' read -r k v; do
     [[ -z "$k" || "$k" == \#* ]] && continue
