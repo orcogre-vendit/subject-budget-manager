@@ -80,6 +80,9 @@ model Project {
   managerName     String? // 과제담당
   hostOrg         String? // 주관연구기관
   fundingAgency   String? // 지원기관
+  fundBank        String? // 연구비 전용계좌 은행 — 부가세(회사 부담분) 지출결의의 입금처
+  fundAccount     String? // 연구비 전용계좌 번호
+  fundHolder      String? // 연구비 전용계좌 예금주
   indirectRate    Float         @default(0) // 간접징수비율(%)
   status          String? // 진행상태
   region          String? // 수행지역

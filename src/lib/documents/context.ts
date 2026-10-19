@@ -75,6 +75,7 @@ export function buildDocContext(tx: TxForDoc, opts: { photos?: DocPhoto[]; now?:
 
   return {
     project: { code: s(project.code), name: project.name, short: s(project.code) },
+    fund: { bank: s(project.fundBank), account: s(project.fundAccount), holder: s(project.fundHolder) },
     budgetPath: budgetPathOf(tx.budgetItem?.name, tx.budgetSubItem?.name, tx.budgetDetailItem?.name),
     subItemName: s(tx.budgetSubItem?.name),
     items,

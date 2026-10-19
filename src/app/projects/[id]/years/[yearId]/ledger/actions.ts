@@ -412,19 +412,33 @@ export async function generateDocument(fd: FormData): Promise<void> {
   const stamp = Date.now();
   const base = { transactionId: tx.id, projectYearId, templateCode };
 
+  // 같은 종류의 서류는 거래당 하나만 — 다시 만들면 기존 것을 덮어쓴다 (DB 행·S3 PDF 모두 정리)
+  const replaceExisting = async () => {
+    const olds = await prisma.generatedDocument.findMany({
+      where: { transactionId: tx.id, templateCode },
+      select: { id: true, filePath: true },
+    });
+    if (!olds.length) return;
+    await prisma.generatedDocument.deleteMany({ where: { id: { in: olds.map((d) => d.id) } } });
+    await Promise.all(olds.filter((d) => d.filePath).map((d) => deleteUpload(d.filePath!)));
+  };
+
   switch (templateCode) {
     case "PURCHASE_REQUEST":
+      await replaceExisting();
       await prisma.generatedDocument.create({
         data: { ...base, format: "text", content: renderPurchaseRequest(ctx) },
       });
       break;
     case "EXPENSE_REPORT":
+      await replaceExisting();
       await prisma.generatedDocument.create({
         data: { ...base, format: "text", content: renderExpenseReportSupply(ctx) },
       });
       break;
     case "EXPENSE_REPORT_VAT":
       if (tx.vatAmount <= 0) return;
+      await replaceExisting();
       await prisma.generatedDocument.create({
         data: { ...base, format: "text", content: renderExpenseReportVat(ctx) },
       });
@@ -435,6 +449,7 @@ export async function generateDocument(fd: FormData): Promise<void> {
         relDir,
         `purchase-request-${stamp}.pdf`,
       );
+      await replaceExisting();
       await prisma.generatedDocument.create({ data: { ...base, format: "pdf", filePath: relPath } });
       break;
     }
@@ -454,6 +469,7 @@ export async function generateDocument(fd: FormData): Promise<void> {
         );
         ({ relPath } = await renderPdfFile(createElement(InspectionCert, { ctx: buildDocContext(tx, { photos: checked }) }), relDir, fileName));
       }
+      await replaceExisting(); // 새 PDF 가 만들어진 뒤에 옛것을 지운다 (실패 시 기존 서류 보존)
       await prisma.generatedDocument.create({ data: { ...base, format: "pdf", filePath: relPath } });
       break;
     }
