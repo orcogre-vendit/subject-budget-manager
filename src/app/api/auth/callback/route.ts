@@ -1,6 +1,6 @@
 // 구글 콜백 — state 검증 → 코드 교환 → 도메인 제한 → 세션 쿠키 발급
 import { NextResponse } from "next/server";
-import { exchangeCode } from "@/lib/auth/google";
+import { appOrigin, exchangeCode } from "@/lib/auth/google";
 import {
   SESSION_COOKIE,
   SESSION_TTL_SEC,
@@ -14,7 +14,8 @@ import {
 export const runtime = "nodejs";
 
 function fail(request: Request, code: string) {
-  const res = NextResponse.redirect(new URL(`/login?error=${code}`, request.url));
+  // Lambda 안의 request.url 은 내부 주소(localhost:8080)라 공개 주소 기준으로 돌려보낸다
+  const res = NextResponse.redirect(new URL(`/login?error=${code}`, appOrigin(request)));
   res.cookies.delete({ name: STATE_COOKIE, path: "/api/auth" });
   return res;
 }
@@ -51,11 +52,11 @@ export async function GET(request: Request) {
 
   const nextEncoded = state.split(".")[1] ?? "";
   const next = safeNextPath(nextEncoded ? Buffer.from(nextEncoded, "base64url").toString("utf8") : "/");
-  const res = NextResponse.redirect(new URL(next, request.url));
+  const res = NextResponse.redirect(new URL(next, appOrigin(request)));
   res.cookies.set(SESSION_COOKIE, signSession({ email: profile.email, name: profile.name, picture: profile.picture }), {
     httpOnly: true,
     sameSite: "lax",
-    secure: url.protocol === "https:",
+    secure: appOrigin(request).startsWith("https:"),
     path: "/",
     maxAge: SESSION_TTL_SEC,
   });
