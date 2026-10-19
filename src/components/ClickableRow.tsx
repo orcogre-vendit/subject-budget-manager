@@ -7,10 +7,13 @@ import type { MouseEvent, ReactNode } from "react";
 export default function ClickableRow({
   href,
   selected = false,
+  tone = "default",
   children,
 }: {
   href: string;
   selected?: boolean;
+  /** warn: 조치가 필요한 행(예: 부가세 입금 필요) — 옅은 주황 배경 */
+  tone?: "default" | "warn";
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -23,7 +26,7 @@ export default function ClickableRow({
       onClick={onClick}
       aria-selected={selected}
       className={`cursor-pointer border-b border-slate-100 last:border-0 ${
-        selected ? "bg-amber-50 hover:bg-amber-50" : "hover:bg-slate-50"
+        selected ? "bg-amber-50 hover:bg-amber-50" : tone === "warn" ? "bg-orange-50/40 hover:bg-orange-50" : "hover:bg-slate-50"
       }`}
     >
       {children}

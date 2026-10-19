@@ -77,6 +77,11 @@ export default async function LedgerPage({
   const nextSeqNo = transactions.reduce((m, t) => Math.max(m, t.seqNo ?? 0), 0) + 1;
 
   const hidden = { projectId, projectYearId };
+  // 부가세(회사 부담분)를 연구비 전용계좌에 아직 넣어야 하는 건 — 출금·부가세 있음·완료 전
+  const vatPending = (t: { direction: string; status: string; vatAmount: number }) =>
+    t.direction === "OUT" && t.vatAmount > 0 && t.status !== "완료" && t.status !== "취소";
+  const vatPendingCount = transactions.filter(vatPending).length;
+  const vatPendingSum = transactions.filter(vatPending).reduce((s, t) => s + t.vatAmount, 0);
 
   return (
     <div className="mx-auto min-w-0 w-full max-w-6xl">
@@ -183,6 +188,11 @@ export default async function LedgerPage({
       {transactions.length > 0 && !detail && (
         <p className="mt-1 text-xs text-slate-400">행을 누르면 아래에 상세(수정·서류·증빙)가 열립니다.</p>
       )}
+      {vatPendingCount > 0 && (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          💰 부가세 입금 필요 {vatPendingCount}건 · 합계 {won(vatPendingSum)} — 완료 전인 출금 건의 회사 부담분(부가세)을 법인계좌에서 연구비 전용계좌로 넣어야 RCMS 이체가 됩니다. 아래 목록에서 주황 배지로 표시됩니다.
+        </p>
+      )}
       {transactions.length === 0 ? (
         <p className="mt-3 rounded-lg bg-slate-100 px-4 py-6 text-center text-sm text-slate-500">
           집행 내역이 없습니다. 아래에서 거래를 입력하세요.
@@ -225,7 +235,7 @@ export default async function LedgerPage({
                 const isIn = t.direction === "IN";
                 const isCancelled = t.status === "취소";
                 return (
-                  <ClickableRow key={t.id} href={detailHref(t.id)} selected={t.id === detail?.id}>
+                  <ClickableRow key={t.id} href={detailHref(t.id)} selected={t.id === detail?.id} tone={vatPending(t) ? "warn" : "default"}>
                     <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-500">
                       {seqLabel(t.seqNo)}
                     </td>
@@ -256,6 +266,14 @@ export default async function LedgerPage({
                           title="RCMS 사용등록 건과 연결됨"
                         >
                           RCMS {t.rcmsRecord.missingSince ? "이체완료" : t.rcmsRecord.progress ?? "등록"}
+                        </span>
+                      )}
+                      {vatPending(t) && (
+                        <span
+                          className="ml-1 whitespace-nowrap rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700"
+                          title="회사 부담분 부가세를 법인계좌에서 연구비 전용계좌로 입금해야 합니다 (지출결의-부가세)"
+                        >
+                          💰 부가세 {won(t.vatAmount)} 입금 필요
                         </span>
                       )}
                     </td>
@@ -312,7 +330,7 @@ export default async function LedgerPage({
             const isIn = t.direction === "IN";
             const isCancelled = t.status === "취소";
             return (
-              <article key={t.id} className={`rounded-xl border p-4 ${t.id === detail?.id ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}>
+              <article key={t.id} className={`rounded-xl border p-4 ${t.id === detail?.id ? "border-amber-300 bg-amber-50" : vatPending(t) ? "border-orange-200 bg-orange-50/40" : "border-slate-200 bg-white"}`}>
                 <Link href={detailHref(t.id)} className="block">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                     <div className="flex min-w-0 items-center gap-2">
@@ -322,6 +340,9 @@ export default async function LedgerPage({
                         <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${t.rcmsRecord.missingSince ? "bg-green-100 text-green-700" : t.rcmsRecord.progress === "임시저장" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
                           RCMS {t.rcmsRecord.missingSince ? "이체완료" : t.rcmsRecord.progress ?? "등록"}
                         </span>
+                      )}
+                      {vatPending(t) && (
+                        <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">💰 부가세 {won(t.vatAmount)} 입금 필요</span>
                       )}
                     </div>
                     <span className={`whitespace-nowrap text-sm font-bold sm:shrink-0 ${isCancelled ? "text-slate-400 line-through" : isIn ? "text-blue-600" : "text-red-600"}`}>
