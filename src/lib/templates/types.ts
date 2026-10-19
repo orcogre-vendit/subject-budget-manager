@@ -17,6 +17,8 @@ export type DocPhoto = {
 
 export type DocContext = {
   project: { code: string; name: string; short: string };
+  /** 과제 연구비 전용계좌 — 부가세(회사 부담분) 지출결의는 법인계좌 → 이 계좌로 입금 */
+  fund: { bank: string; account: string; holder: string };
   budgetPath: string; // 예: 직접비 > 연구재료비 > 연구재료 구입비
   subItemName: string;
   items: DocItem[];
