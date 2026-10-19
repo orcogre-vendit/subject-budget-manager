@@ -16,7 +16,8 @@ export function proxy(request: NextRequest) {
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
-  const login = new URL("/login", request.url);
+  // APP_URL 이 있으면 공개 주소 기준 (Lambda 내부 주소로 튕기지 않게)
+  const login = new URL("/login", process.env.APP_URL || request.url);
   login.searchParams.set("next", `${pathname}${search}`);
   const res = NextResponse.redirect(login);
   if (request.cookies.has(SESSION_COOKIE)) res.cookies.delete({ name: SESSION_COOKIE, path: "/" });
