@@ -268,20 +268,20 @@ export default async function LedgerPage({
                           RCMS {t.rcmsRecord.missingSince ? "이체완료" : t.rcmsRecord.progress ?? "등록"}
                         </span>
                       )}
-                      {vatPending(t) && (
-                        <span
-                          className="ml-1 whitespace-nowrap rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700"
-                          title="회사 부담분 부가세를 법인계좌에서 연구비 전용계좌로 입금해야 합니다 (지출결의-부가세)"
-                        >
-                          💰 부가세 {won(t.vatAmount)} 입금 필요
-                        </span>
-                      )}
                     </td>
                     <td className="break-keep px-3 py-2.5 text-xs text-slate-600">
                       {cat || "-"}
                     </td>
                     <td className="break-keep px-3 py-2.5 text-slate-700">
                       {t.description ?? "-"}
+                      {vatPending(t) && (
+                        <span
+                          className="mt-1 block w-fit whitespace-nowrap rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700"
+                          title="회사 부담분 부가세를 법인계좌에서 연구비 전용계좌로 입금해야 합니다 (지출결의-부가세)"
+                        >
+                          💰 부가세 {won(t.vatAmount)} 입금 필요
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-center text-xs text-slate-500">
                       {t._count.attachments > 0
