@@ -73,6 +73,8 @@ export default function TransactionDetail({
   const transactionId = tx.id;
   const d = (v: Date | null) => (v ? ymd(v) : "");
   const isOut = tx.direction === "OUT";
+  // 회사 부담분 부가세를 연구비 전용계좌에 아직 넣어야 하는 건 (원장 목록의 배지와 같은 조건)
+  const vatPending = isOut && tx.vatAmount > 0 && tx.status !== "완료" && tx.status !== "취소";
 
   const defaultValues: Record<string, string> = {
     status: tx.status,
@@ -129,6 +131,12 @@ export default function TransactionDetail({
         <p className="text-sm text-slate-500">
           공급가액 <b className="text-slate-800">{won(tx.amount)}</b> · 부가세 {won(tx.vatAmount)} · 총액 {won(tx.amount + tx.vatAmount)}
           <span className="ml-2 text-xs text-slate-400">(연구비 잔액에는 공급가액만 반영)</span>
+        </p>
+      )}
+      {vatPending && (
+        <p className="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
+          <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[11px] font-semibold text-orange-700">💰 부가세 {won(tx.vatAmount)} 입금 필요</span>
+          <span className="ml-2 text-xs">회사 부담분을 법인계좌에서 과제 연구비 전용계좌로 넣어야 RCMS 이체가 됩니다. 아래 서류 생성에서 &quot;지출결의 본문 — 부가세&quot;를 만들어 올리고, 입금 후 상태를 완료로 바꾸세요.</span>
         </p>
       )}
 
