@@ -19,7 +19,7 @@ export function renderExpenseReportSupply(c: DocContext): string {
     c.purpose,
     "",
     `- 비목: ${c.budgetPath}`,
-    "- 재원: 정부 연구개발비 (연구비 전용계좌)",
+    `- 재원: 정부 연구개발비 — 연구비 전용계좌 ${c.fund.bank} ${c.fund.account} (예금주 ${c.fund.holder})`,
     `- 세금계산서 발행일: ${c.invoiceDate}`,
     "",
     `[거래처] ${c.vendor}`,

@@ -34,6 +34,10 @@ export function renderPurchaseRequest(c: DocContext): string {
     " - 품목:",
     ...itemLines,
     ` - 공급가액 ${n(c.supplyAmount)}원 + 부가세 ${n(c.vatAmount)}원 = 총액 ${n(c.totalAmount)}원 (부가세는 회사 자금, 연구비 계상 불가)`,
+    ` - 재원: 과제 연구비 전용계좌 ${dash(c.fund.bank)} ${dash(c.fund.account)} (예금주 ${dash(c.fund.holder)})`,
+    ...(c.vatAmount > 0
+      ? [` - 부가세 ${n(c.vatAmount)}원은 회사 부담분으로 법인계좌 → 위 연구비 전용계좌에 입금 후 RCMS 에서 총액 이체 (별도 지출결의)`]
+      : []),
     "",
     "■ 은행",
     isCard ? "- (연구비카드 결제)" : dash(c.vendorBank),
@@ -52,6 +56,7 @@ export function renderPurchaseRequest(c: DocContext): string {
     "",
     "■ 비고",
     ` - 거래처: ${c.vendor} · 결제수단: ${c.paymentMethod} · 구매(예정)일: ${c.purchaseDate}`,
+    ` - 연구비 전용계좌: ${dash(c.fund.bank)} ${dash(c.fund.account)} (예금주 ${dash(c.fund.holder)}) — 연구비(공급가액)는 이 계좌에서 RCMS 로만 집행`,
     " - RCMS 연구비 사용등록 후 거래명세서·세금계산서(또는 카드매출전표)·검수확인서를 증빙으로 첨부 예정",
     " - 본 품의는 flex 전자결재로 승인 (별도 인장·서명 생략)",
     "",
