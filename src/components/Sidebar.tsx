@@ -63,6 +63,9 @@ export default function Sidebar({ user }: { user: SidebarUser | null }) {
           </form>
         </div>
       )}
+      <p className={`hidden px-5 pb-3 text-[11px] text-slate-400 md:block md:pt-2 ${user ? "" : "md:mt-auto"}`}>
+        v{process.env.NEXT_PUBLIC_APP_VERSION}
+      </p>
     </aside>
   );
 }

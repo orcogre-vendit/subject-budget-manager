@@ -150,6 +150,7 @@ model Transaction {
   budgetDetailItem   BudgetDetailItem?   @relation(fields: [budgetDetailItemId], references: [id])
   plannedAmount      Int? // 품의 시점 공급가액 — RCMS 매칭으로 amount 가 실집행액으로 갱신될 때 보존
   seqNo              Int? // 연차 안의 거래 연번(1부터, 생성 순). 첨부 파일명 "01-…" 의 번호. 삭제돼도 재사용하지 않음
+  budgetAdjust       Boolean? // 편성 조정 기록(협약변경 비목 재배분 등): IN=증액, OUT=감액. 집행·RCMS 대조에서 빠지고 편성액에만 반영. 기존 레코드는 고치지 않고 이 조정 레코드를 추가한다
   attachments        Attachment[]
   items              TransactionItem[]
   documents          GeneratedDocument[]

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { NextConfig } from "next";
 
 const appHost = (() => {
@@ -8,7 +9,11 @@ const appHost = (() => {
   }
 })();
 
+// 사이드바에 표시할 앱 버전 — package.json 의 version (배포 때 CHANGELOG.md 와 맞춘다)
+const appVersion = (JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string }).version;
+
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_APP_VERSION: appVersion },
   // Lambda(Web Adapter) 배포용 — .next/standalone 에 server.js + 필요한 node_modules 만 모은다
   output: "standalone",
   // PDF 폰트는 process.cwd()/public/fonts 에서 읽는다 (scripts/build-lambda.mjs 가 public 을 standalone 에 복사)

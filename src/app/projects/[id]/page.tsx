@@ -169,6 +169,12 @@ export default async function ProjectDetailPage({
                     >
                       📒 집행 원장
                     </Link>
+                    <Link
+                      href={`/projects/${project.id}/years/${y.id}/budget`}
+                      className="ml-2 inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                      📊 예산표
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-3">

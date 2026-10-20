@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { idOf } from "@/lib/ids";
 import { won, ymd, executionRate } from "@/lib/format";
+import { allocationOf, spendingOf } from "@/lib/budget";
 import { seqLabel } from "@/lib/evidenceName";
 import TransactionForm from "@/components/TransactionForm";
 import TransactionDetail, { txDetailInclude, loadBudgetTree } from "@/components/TransactionDetail";
@@ -62,13 +63,13 @@ export default async function LedgerPage({
     if (t.status === "취소") continue; // 취소 거래는 잔액 집계 제외
     const key = t.budgetItem?.name ?? "(미분류)";
     const e = byItem.get(key) ?? { in: 0, out: 0 };
-    if (t.direction === "IN") {
-      e.in += t.amount;
-      totalIn += t.amount;
-    } else {
-      e.out += t.amount;
-      totalOut += t.amount;
-    }
+    // 입금 = 편성(조정 포함, 감액 조정은 −), 출금 = 실제 집행만
+    const alloc = allocationOf(t);
+    const spent = spendingOf(t);
+    e.in += alloc;
+    totalIn += alloc;
+    e.out += spent;
+    totalOut += spent;
     byItem.set(key, e);
   }
   const balance = totalIn - totalOut;
@@ -78,8 +79,8 @@ export default async function LedgerPage({
 
   const hidden = { projectId, projectYearId };
   // 부가세(회사 부담분)를 연구비 전용계좌에 아직 넣어야 하는 건 — 출금·부가세 있음·완료 전
-  const vatPending = (t: { direction: string; status: string; vatAmount: number }) =>
-    t.direction === "OUT" && t.vatAmount > 0 && t.status !== "완료" && t.status !== "취소";
+  const vatPending = (t: { direction: string; status: string; vatAmount: number; budgetAdjust: boolean | null }) =>
+    t.direction === "OUT" && !t.budgetAdjust && t.vatAmount > 0 && t.status !== "완료" && t.status !== "취소";
   const vatPendingCount = transactions.filter(vatPending).length;
   const vatPendingSum = transactions.filter(vatPending).reduce((s, t) => s + t.vatAmount, 0);
 
@@ -101,6 +102,9 @@ export default async function LedgerPage({
       </h1>
       {year.ledgerType === "PROJECT" && (
         <p className="mt-1 text-sm">
+          <Link href={`/projects/${projectId}/years/${projectYearId}/budget`} className="mr-3 text-slate-500 underline hover:text-slate-800">
+            📊 예산표
+          </Link>
           <Link href={`/rcms/${projectYearId}`} className="text-slate-500 underline hover:text-slate-800">
             🔁 RCMS 대조표
           </Link>
@@ -117,7 +121,7 @@ export default async function LedgerPage({
           </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">총 입금</p>
+          <p className="text-xs text-slate-500">총 편성(입금±조정)</p>
           <p className="mt-1 text-lg font-bold text-blue-600">{won(totalIn)}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -274,6 +278,11 @@ export default async function LedgerPage({
                     </td>
                     <td className="break-keep px-3 py-2.5 text-slate-700">
                       {t.description ?? "-"}
+                      {t.budgetAdjust && (
+                        <span className="mt-1 block w-fit whitespace-nowrap rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                          편성 조정 · {t.direction === "IN" ? "증액" : "감액"} (집행 아님)
+                        </span>
+                      )}
                       {vatPending(t) && (
                         <span
                           className="mt-1 block w-fit whitespace-nowrap rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700"
@@ -292,9 +301,11 @@ export default async function LedgerPage({
                       className={`whitespace-nowrap px-3 py-2.5 text-right font-medium ${
                         isCancelled
                           ? "text-slate-400 line-through"
-                          : isIn
-                            ? "text-blue-600"
-                            : "text-red-600"
+                          : t.budgetAdjust
+                            ? "text-violet-600"
+                            : isIn
+                              ? "text-blue-600"
+                              : "text-red-600"
                       }`}
                     >
                       {isIn ? "+" : "−"}
@@ -341,11 +352,14 @@ export default async function LedgerPage({
                           RCMS {t.rcmsRecord.missingSince ? "이체완료" : t.rcmsRecord.progress ?? "등록"}
                         </span>
                       )}
+                      {t.budgetAdjust && (
+                        <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">편성 {t.direction === "IN" ? "증액" : "감액"}</span>
+                      )}
                       {vatPending(t) && (
                         <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">💰 부가세 {won(t.vatAmount)} 입금 필요</span>
                       )}
                     </div>
-                    <span className={`whitespace-nowrap text-sm font-bold sm:shrink-0 ${isCancelled ? "text-slate-400 line-through" : isIn ? "text-blue-600" : "text-red-600"}`}>
+                    <span className={`whitespace-nowrap text-sm font-bold sm:shrink-0 ${isCancelled ? "text-slate-400 line-through" : t.budgetAdjust ? "text-violet-600" : isIn ? "text-blue-600" : "text-red-600"}`}>
                       {isIn ? "+" : "−"}{won(t.amount)}
                     </span>
                   </div>
