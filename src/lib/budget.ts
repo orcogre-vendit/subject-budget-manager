@@ -21,6 +21,12 @@ export function allocationOf(t: Flow): number {
   return t.budgetAdjust ? -t.amount : 0;
 }
 
+/**
+ * Prisma where 조건: 편성 조정이 아닌 거래. budgetAdjust 는 NULL 허용 컬럼이라 `NOT: { budgetAdjust: true }` 로 쓰면
+ * SQL 3값 논리 때문에 NULL 행(=일반 거래 전부)이 빠진다. 반드시 이 조건을 쓴다.
+ */
+export const NOT_ADJUST = { OR: [{ budgetAdjust: null }, { budgetAdjust: false }] };
+
 /** 집행액 — 편성 조정 출금은 집행이 아니므로 0 */
 export function spendingOf(t: Flow): number {
   if (t.status === "취소") return 0;
