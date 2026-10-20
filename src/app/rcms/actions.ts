@@ -82,7 +82,7 @@ async function autoMatchYears(yearIds: string[]): Promise<number> {
     const [records, txs] = await Promise.all([
       prisma.rcmsRecord.findMany({ where: { projectYearId, transactionId: null } }),
       prisma.transaction.findMany({
-        where: { projectYearId, direction: "OUT", status: { not: "취소" }, rcmsRecord: null, NOT: { budgetAdjust: true } },
+        where: { projectYearId, direction: "OUT", status: { not: "취소" }, rcmsRecord: null, OR: [{ budgetAdjust: null }, { budgetAdjust: false }] },
         include: txInclude,
       }),
     ]);
