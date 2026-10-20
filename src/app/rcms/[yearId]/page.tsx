@@ -36,7 +36,7 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
   const warnings = buildWarnings(txs, records, items);
 
   const matchedTxIds = new Set(records.map((r) => r.transactionId).filter((v): v is string => v !== null));
-  const pendingTxs = txs.filter((t) => t.direction === "OUT" && t.status !== "취소" && !matchedTxIds.has(t.id));
+  const pendingTxs = txs.filter((t) => t.direction === "OUT" && !t.budgetAdjust && t.status !== "취소" && !matchedTxIds.has(t.id));
   const matched = records.filter((r) => r.transactionId);
   const unmatched = records.filter((r) => !r.transactionId);
 

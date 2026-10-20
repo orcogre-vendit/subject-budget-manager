@@ -66,11 +66,11 @@ async function applyMatch(recordId: string, txId: string, method: "auto" | "manu
     prisma.rcmsRecord.findUnique({ where: { id: recordId } }),
     prisma.transaction.findUnique({
       where: { id: txId },
-      select: { id: true, projectYearId: true, direction: true, rcmsRecord: { select: { id: true } } },
+      select: { id: true, projectYearId: true, direction: true, budgetAdjust: true, rcmsRecord: { select: { id: true } } },
     }),
   ]);
   if (!rec || !tx || rec.transactionId || tx.rcmsRecord) return false;
-  if (rec.projectYearId !== tx.projectYearId || tx.direction !== "OUT") return false;
+  if (rec.projectYearId !== tx.projectYearId || tx.direction !== "OUT" || tx.budgetAdjust) return false;
   await prisma.rcmsRecord.update({ where: { id: recordId }, data: { transactionId: txId, matchMethod: method } });
   await syncTransaction(txId, rec);
   return true;
@@ -82,7 +82,7 @@ async function autoMatchYears(yearIds: string[]): Promise<number> {
     const [records, txs] = await Promise.all([
       prisma.rcmsRecord.findMany({ where: { projectYearId, transactionId: null } }),
       prisma.transaction.findMany({
-        where: { projectYearId, direction: "OUT", status: { not: "취소" }, rcmsRecord: null },
+        where: { projectYearId, direction: "OUT", status: { not: "취소" }, rcmsRecord: null, NOT: { budgetAdjust: true } },
         include: txInclude,
       }),
     ]);

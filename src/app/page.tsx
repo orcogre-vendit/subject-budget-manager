@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { won, ymd, executionRate } from "@/lib/format";
+import { allocationOf, spendingOf } from "@/lib/budget";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function DashboardPage() {
     prisma.transaction.count(),
     prisma.projectYear.aggregate({ _sum: { budgetCash: true } }),
     prisma.transaction.groupBy({
-      by: ["direction"],
+      by: ["direction", "budgetAdjust"],
       where: { status: { not: "취소" } },
       _sum: { amount: true },
     }),
@@ -49,12 +50,12 @@ export default async function DashboardPage() {
       include: { years: { select: { id: true, budgetCash: true } } },
     }),
     prisma.transaction.groupBy({
-      by: ["projectYearId", "direction"],
+      by: ["projectYearId", "direction", "budgetAdjust"],
       where: { status: { not: "취소" } },
       _sum: { amount: true },
     }),
     prisma.transaction.groupBy({
-      by: ["budgetItemId", "direction"],
+      by: ["budgetItemId", "direction", "budgetAdjust"],
       where: { status: { not: "취소" } },
       _sum: { amount: true },
     }),
@@ -72,8 +73,14 @@ export default async function DashboardPage() {
   ]);
 
   const totalBudget = budgetSum._sum.budgetCash ?? 0;
-  const totalIn = dirAgg.find((a) => a.direction === "IN")?._sum.amount ?? 0;
-  const totalOut = dirAgg.find((a) => a.direction === "OUT")?._sum.amount ?? 0;
+  // 입금 = 편성(조정 증감 포함), 출금 = 실제 집행 (편성 조정 출금 제외)
+  const flow = (r: { direction: string; budgetAdjust: boolean | null; _sum: { amount: number | null } }) => ({
+    direction: r.direction,
+    budgetAdjust: r.budgetAdjust,
+    amount: r._sum.amount ?? 0,
+  });
+  const totalIn = dirAgg.reduce((s, r) => s + allocationOf(flow(r)), 0);
+  const totalOut = dirAgg.reduce((s, r) => s + spendingOf(flow(r)), 0);
   const balance = totalIn - totalOut;
   const totalRate = executionRate(totalOut, totalBudget);
 
@@ -81,8 +88,8 @@ export default async function DashboardPage() {
   const yearMap = new Map<string, { in: number; out: number }>();
   for (const r of txByYear) {
     const e = yearMap.get(r.projectYearId) ?? { in: 0, out: 0 };
-    if (r.direction === "IN") e.in += r._sum.amount ?? 0;
-    else e.out += r._sum.amount ?? 0;
+    e.in += allocationOf(flow(r));
+    e.out += spendingOf(flow(r));
     yearMap.set(r.projectYearId, e);
   }
 
@@ -112,11 +119,9 @@ export default async function DashboardPage() {
   // 비목별 출금 분포
   const itemOut = new Map<string, number>();
   for (const r of itemAgg) {
-    if (r.direction !== "OUT" || r.budgetItemId == null) continue;
-    itemOut.set(
-      r.budgetItemId,
-      (itemOut.get(r.budgetItemId) ?? 0) + (r._sum.amount ?? 0),
-    );
+    const spent = spendingOf(flow(r));
+    if (!spent || r.budgetItemId == null) continue;
+    itemOut.set(r.budgetItemId, (itemOut.get(r.budgetItemId) ?? 0) + spent);
   }
   const itemStats = items
     .map((it) => ({ name: it.name, out: itemOut.get(it.id) ?? 0 }))

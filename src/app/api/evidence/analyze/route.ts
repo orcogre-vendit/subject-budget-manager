@@ -51,7 +51,7 @@ export async function POST(request: Request) {
         include: { subItems: { include: { detailItems: true } } },
       }),
       prisma.transaction.findMany({
-        where: { projectYearId, direction: "OUT", status: { not: "취소" } },
+        where: { projectYearId, direction: "OUT", status: { not: "취소" }, NOT: { budgetAdjust: true } },
         orderBy: { date: "desc" },
         take: 10,
         select: {

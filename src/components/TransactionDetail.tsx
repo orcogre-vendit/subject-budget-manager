@@ -72,7 +72,8 @@ export default function TransactionDetail({
 }) {
   const transactionId = tx.id;
   const d = (v: Date | null) => (v ? ymd(v) : "");
-  const isOut = tx.direction === "OUT";
+  // 편성 조정(협약변경 감액 등) 출금은 집행이 아니라 서류·증빙 대상이 아니다
+  const isOut = tx.direction === "OUT" && !tx.budgetAdjust;
   // 회사 부담분 부가세를 연구비 전용계좌에 아직 넣어야 하는 건 (원장 목록의 배지와 같은 조건)
   const vatPending = isOut && tx.vatAmount > 0 && tx.status !== "완료" && tx.status !== "취소";
 
@@ -151,8 +152,14 @@ export default function TransactionDetail({
         />
       </div>
 
+      {tx.budgetAdjust && (
+        <p className="mt-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-800">
+          편성 조정 기록입니다 ({tx.direction === "IN" ? "증액" : "감액"} {won(tx.amount)}). 집행이 아니라서 잔액의 편성 쪽에만 반영되고, 서류·증빙·RCMS 대조 대상이 아닙니다.
+        </p>
+      )}
+
       {/* 서류 생성 */}
-      <DocumentsPanel
+      {!tx.budgetAdjust && <DocumentsPanel
         transactionId={tx.id}
         projectId={projectId}
         projectYearId={projectYearId}
@@ -164,7 +171,7 @@ export default function TransactionDetail({
         docs={docs}
         generate={generateDocument}
         remove={deleteDocument}
-      />
+      />}
 
       {/* 증빙 체크리스트 */}
       {isOut && reqs.length > 0 && (

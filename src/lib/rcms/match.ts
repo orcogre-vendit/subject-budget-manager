@@ -1,5 +1,5 @@
 // RCMS 사용등록 건 ↔ 우리 장부 품의(Transaction) 매칭 규칙 + 대조 경고 규칙. 순수 함수(DB 무관).
-import { budgetPathOf } from "@/lib/budget";
+import { allocationOf, budgetPathOf } from "@/lib/budget";
 import { norm, parseRcmsBudgetPath } from "./parse";
 
 export type RecLite = {
@@ -21,6 +21,7 @@ export type TxLite = {
   date: Date;
   status: string;
   direction: string;
+  budgetAdjust: boolean | null;
   amount: number;
   vatAmount: number;
   plannedAmount: number | null;
@@ -45,7 +46,7 @@ export function samePath(recPath: string | null, tx: TxLite): boolean {
 
 /** 매칭 점수. 금액이 맞지 않으면 후보가 아님(null). 3 이상이면 자동매칭 대상 */
 export function matchScore(rec: RecLite, tx: TxLite): number | null {
-  if (tx.direction !== "OUT" || tx.status === "취소") return null;
+  if (tx.direction !== "OUT" || tx.budgetAdjust || tx.status === "취소") return null;
   let score: number;
   if (rec.supplyAmount > 0 && rec.supplyAmount === tx.amount) score = 3;
   else if (rec.useAmount > 0 && rec.useAmount === tx.amount + tx.vatAmount) score = 3;
@@ -120,7 +121,7 @@ export function buildItemRows(txs: TxLite[], records: RecLite[]): ItemRow[] {
   for (const tx of txs) {
     if (tx.status === "취소") continue;
     const name = tx.budgetItem?.name ?? "(미분류)";
-    if (tx.direction === "IN") row(name).allocated += tx.amount;
+    if (tx.direction === "IN" || tx.budgetAdjust) row(name).allocated += allocationOf(tx); // 편성(조정 증감 포함)
     else if (!matchedTx.has(tx.id)) row(name).pending += tx.amount;
   }
   for (const rec of records) row(recItemName(rec)).rcms += rec.supplyAmount;
@@ -157,7 +158,7 @@ export function buildWarnings(txs: TxLite[], records: RecLite[], items: ItemRow[
   }
   const matchedTx = new Set(records.map((r) => r.transactionId));
   for (const tx of txs) {
-    if (tx.direction !== "OUT" || tx.status === "취소" || matchedTx.has(tx.id)) continue;
+    if (tx.direction !== "OUT" || tx.budgetAdjust || tx.status === "취소" || matchedTx.has(tx.id)) continue;
     const age = ageDays(tx.date);
     if (age >= 14)
       w.push({ level: "warn", code: "UNREGISTERED", message: `품의 후 ${age}일 지났지만 RCMS 미등록: ${tx.description ?? tx.vendor ?? "-"} ${fmt(tx.amount)}원`, txId: tx.id });

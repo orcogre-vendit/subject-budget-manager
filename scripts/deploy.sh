@@ -28,6 +28,13 @@ else
   echo "⚠ $PARAMS_FILE 없음 — SessionSecret 등 비밀값 없이 배포됩니다 (로그인 게이트 꺼짐)" >&2
 fi
 
+VERSION=$(node -p "require('./package.json').version")
+if ! grep -q "^## \[${VERSION}\]" CHANGELOG.md; then
+  echo "✗ CHANGELOG.md 에 [${VERSION}] 항목이 없습니다. 변경 내용을 적고 package.json version 과 맞춘 뒤 다시 배포하세요." >&2
+  exit 1
+fi
+echo "== 버전 v${VERSION}"
+
 echo "== 1/4 Lambda 번들"
 npm run build:lambda
 
@@ -60,7 +67,14 @@ DSQL_ENDPOINT="$ENDPOINT" FILES_BUCKET="$BUCKET" AWS_REGION="$REGION" npm run db
 echo "== 4/4 헬스체크"
 for i in $(seq 1 10); do
   code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/health" || true)
-  [[ "$code" == "200" ]] && { echo "OK $URL"; exit 0; }
+  if [[ "$code" == "200" ]]; then
+    echo "OK $URL (v${VERSION})"
+    # prod 배포 성공 시 버전 태그 (이미 있으면 건너뜀)
+    if [[ "$STAGE" == "prod" ]] && ! git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+      git tag -a "v${VERSION}" -m "v${VERSION} 배포 $(date +%Y-%m-%d)" && echo "태그 v${VERSION} 생성 (git push origin v${VERSION} 로 올리세요)"
+    fi
+    exit 0
+  fi
   sleep 3
 done
 echo "✗ 헬스체크 실패 ($URL/api/health → $code)" >&2
