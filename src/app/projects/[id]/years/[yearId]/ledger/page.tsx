@@ -100,16 +100,24 @@ export default async function LedgerPage({
           </span>
         ) : null}
       </h1>
-      {year.ledgerType === "PROJECT" && (
-        <p className="mt-1 text-sm">
-          <Link href={`/projects/${projectId}/years/${projectYearId}/budget`} className="mr-3 text-slate-500 underline hover:text-slate-800">
-            📊 예산표
-          </Link>
-          <Link href={`/rcms/${projectYearId}`} className="text-slate-500 underline hover:text-slate-800">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Link
+          href={`/projects/${projectId}/years/${projectYearId}/budget`}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+        >
+          📊 예산표 보기
+        </Link>
+        {year.ledgerType === "PROJECT" && (
+          <Link
+            href={`/rcms/${projectYearId}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+          >
             🔁 RCMS 대조표
           </Link>
-          <span className="ml-2 text-xs text-slate-400">출금은 품의로 입력하고, 실집행액은 RCMS 엑셀 가져오기로 반영됩니다.</span>
-        </p>
+        )}
+      </div>
+      {year.ledgerType === "PROJECT" && (
+        <p className="mt-2 text-xs text-slate-400">출금은 품의로 입력하고, 실집행액은 RCMS 엑셀 가져오기로 반영됩니다.</p>
       )}
 
       {/* 요약 카드 */}
