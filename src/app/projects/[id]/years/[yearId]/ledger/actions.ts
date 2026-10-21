@@ -370,6 +370,8 @@ export async function uploadAttachments(
 
   revalidatePath(txEditPath(projectId, projectYearId, transactionId));
   revalidatePath(ledgerPath(projectId, projectYearId));
+  revalidatePath(`/m/tx/${transactionId}`); // 모바일 화면에서 올린 경우
+  revalidatePath(`/m/years/${projectYearId}`);
   return { values: {}, nonce: Date.now() };
 }
 
