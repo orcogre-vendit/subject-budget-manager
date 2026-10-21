@@ -54,9 +54,9 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
   );
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto min-w-0 w-full max-w-6xl">
       <Link href="/rcms" className="text-sm text-slate-400 hover:text-slate-700">← RCMS 대조</Link>
-      <h1 className="mt-2 text-2xl font-bold text-slate-900">
+      <h1 className="mt-2 break-keep text-2xl font-bold text-slate-900">
         RCMS 대조표 — {year.project.name} <span className="text-base font-normal text-slate-400">{year.yearNo}년차</span>
       </h1>
       <p className="mt-1 text-sm text-slate-500">
@@ -78,8 +78,8 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
           {warnings.map((w, i) => (
             <div key={i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${LEVEL_CLS[w.level]}`}>
               <span>{LEVEL_ICON[w.level]}</span>
-              <span className="flex-1">{w.message}</span>
-              {w.txId && <Link href={editHref(w.txId)} className="shrink-0 text-xs underline">거래 보기</Link>}
+              <span className="min-w-0 flex-1 break-keep">{w.message}</span>
+              {w.txId && <Link href={editHref(w.txId)} className="shrink-0 whitespace-nowrap text-xs underline">거래 보기</Link>}
             </div>
           ))}
         </div>
@@ -88,7 +88,7 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
       {/* 비목별 */}
       {items.length > 0 && (
         <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm [&_th]:whitespace-nowrap">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
                 <th className="px-4 py-2.5 font-medium">비목</th>
@@ -101,11 +101,11 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
             <tbody>
               {items.map((it) => (
                 <tr key={it.name} className="border-b border-slate-100 last:border-0">
-                  <td className="px-4 py-2.5 font-medium text-slate-800">{it.name}</td>
-                  <td className="px-4 py-2.5 text-right text-blue-600">{won(it.allocated)}</td>
-                  <td className="px-4 py-2.5 text-right text-red-600">{won(it.rcms)}</td>
-                  <td className="px-4 py-2.5 text-right text-amber-700">{won(it.pending)}</td>
-                  <td className={`px-4 py-2.5 text-right font-semibold ${it.available < 0 ? "text-red-700" : "text-slate-900"}`}>{won(it.available)}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 font-medium text-slate-800">{it.name}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right text-blue-600">{won(it.allocated)}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right text-red-600">{won(it.rcms)}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right text-amber-700">{won(it.pending)}</td>
+                  <td className={`whitespace-nowrap px-4 py-2.5 text-right font-semibold ${it.available < 0 ? "text-red-700" : "text-slate-900"}`}>{won(it.available)}</td>
                 </tr>
               ))}
             </tbody>
@@ -119,7 +119,7 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
         <p className="mt-3 rounded-lg bg-slate-100 px-4 py-4 text-center text-sm text-slate-500">모든 RCMS 건이 장부와 연결되어 있습니다.</p>
       ) : (
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[1000px] text-sm [&_th]:whitespace-nowrap">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
                 <th className="px-3 py-2.5 font-medium">사용일</th>
@@ -139,8 +139,8 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
                 return (
                   <tr key={r.id} className="border-b border-slate-100 last:border-0 align-top">
                     <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{r.useDate ? ymd(r.useDate) : "-"}</td>
-                    <td className="px-3 py-2.5"><RecStatus progress={r.progress} missingSince={r.missingSince} /><p className="mt-0.5 text-[10px] text-slate-400">{r.evidenceType ?? ""}</p></td>
-                    <td className="px-3 py-2.5 text-xs text-slate-600">{r.budgetPath ?? "-"}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5"><RecStatus progress={r.progress} missingSince={r.missingSince} /><p className="mt-0.5 text-[10px] text-slate-400">{r.evidenceType ?? ""}</p></td>
+                    <td className="min-w-[200px] break-keep px-3 py-2.5 text-xs text-slate-600">{r.budgetPath ?? "-"}</td>
                     <td className="px-3 py-2.5"><p className="text-slate-800">{r.vendor ?? "-"}</p><p className="text-xs text-slate-500">{r.itemName ?? ""}</p></td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right font-medium text-red-600">{won(r.supplyAmount)}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right text-slate-500">{won(r.vatAmount)}</td>
@@ -186,7 +186,7 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
         <p className="mt-3 rounded-lg bg-slate-100 px-4 py-4 text-center text-sm text-slate-500">RCMS 에 등록되지 않은 품의가 없습니다.</p>
       ) : (
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[860px] text-sm [&_th]:whitespace-nowrap">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
                 <th className="px-3 py-2.5 font-medium">품의일</th>
@@ -201,11 +201,11 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
               {pendingTxs.map((t) => (
                 <tr key={t.id} className="border-b border-slate-100 last:border-0">
                   <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{ymd(t.date)}</td>
-                  <td className="px-3 py-2.5"><span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">{t.status}</span></td>
-                  <td className="px-3 py-2.5 text-xs text-slate-600">{txBudgetPath(t)}</td>
-                  <td className="px-3 py-2.5"><p className="text-slate-800">{t.description ?? "-"}</p><p className="text-xs text-slate-500">{t.vendor ?? ""}</p></td>
+                  <td className="whitespace-nowrap px-3 py-2.5"><span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">{t.status}</span></td>
+                  <td className="min-w-[220px] break-keep px-3 py-2.5 text-xs text-slate-600">{txBudgetPath(t)}</td>
+                  <td className="min-w-[220px] px-3 py-2.5"><p className="break-keep text-slate-800">{t.description ?? "-"}</p><p className="text-xs text-slate-500">{t.vendor ?? ""}</p></td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-right font-medium text-amber-700">{won(t.amount)}</td>
-                  <td className="px-3 py-2.5 text-right"><Link href={editHref(t.id)} className="text-xs font-medium text-slate-600 hover:underline">거래 보기</Link></td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right"><Link href={editHref(t.id)} className="text-xs font-medium text-slate-600 hover:underline">거래 보기</Link></td>
                 </tr>
               ))}
             </tbody>
@@ -219,7 +219,7 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
         <p className="mt-3 rounded-lg bg-slate-100 px-4 py-4 text-center text-sm text-slate-500">아직 연결된 건이 없습니다.</p>
       ) : (
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[900px] text-sm [&_th]:whitespace-nowrap">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
                 <th className="px-3 py-2.5 font-medium">사용일</th>
@@ -237,7 +237,7 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
                 return (
                   <tr key={r.id} className="border-b border-slate-100 last:border-0">
                     <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{r.useDate ? ymd(r.useDate) : "-"}</td>
-                    <td className="px-3 py-2.5"><RecStatus progress={r.progress} missingSince={r.missingSince} /><p className="mt-0.5 text-[10px] text-slate-400">{r.matchMethod === "auto" ? "자동" : r.matchMethod === "created" ? "RCMS에서 생성" : "수동"}</p></td>
+                    <td className="whitespace-nowrap px-3 py-2.5"><RecStatus progress={r.progress} missingSince={r.missingSince} /><p className="mt-0.5 text-[10px] text-slate-400">{r.matchMethod === "auto" ? "자동" : r.matchMethod === "created" ? "RCMS에서 생성" : "수동"}</p></td>
                     <td className="px-3 py-2.5"><p className="text-slate-800">{r.vendor ?? "-"}</p><p className="text-xs text-slate-500">{r.itemName ?? ""}</p></td>
                     <td className="px-3 py-2.5">
                       {t ? (
@@ -255,7 +255,7 @@ export default async function RcmsYearPage({ params }: { params: Promise<{ yearI
                       )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right text-slate-500">{won(r.vatAmount)}</td>
-                    <td className="px-3 py-2.5 text-right">
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right">
                       <form action={unmatchRecord}>
                         {hidden(r.id)}
                         <button type="submit" className="text-xs font-medium text-slate-500 hover:underline">연결 해제</button>

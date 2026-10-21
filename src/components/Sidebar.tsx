@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const NAV = [
   { href: "/", label: "대시보드", icon: "📊" },
   { href: "/projects", label: "과제 관리", icon: "📁" },
+  { href: "/budgets", label: "예산표", icon: "🧾" },
   { href: "/researchers", label: "연구원 관리", icon: "👥" },
   { href: "/budget", label: "기준정보(비목)", icon: "🏷️" },
   { href: "/rcms", label: "RCMS 대조", icon: "🔁" },
@@ -24,10 +25,16 @@ export default function Sidebar({ user }: { user: SidebarUser | null }) {
       </div>
       <nav className="flex gap-1 overflow-x-auto p-2 md:flex-col md:gap-0.5 md:p-3">
         {NAV.map((item) => {
+          // 연차 예산표(/projects/…/years/…/budget)는 "예산표" 메뉴로, "/budgets" 가 "/budget"(기준정보)에 걸리지 않게 경로 단위로 비교
+          const onBudgetTable = /\/years\/[^/]+\/budget$/.test(pathname);
           const active =
             item.href === "/"
               ? pathname === "/"
-              : pathname.startsWith(item.href);
+              : item.href === "/budgets"
+                ? pathname === "/budgets" || onBudgetTable
+                : item.href === "/projects"
+                  ? pathname.startsWith("/projects") && !onBudgetTable
+                  : pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}
