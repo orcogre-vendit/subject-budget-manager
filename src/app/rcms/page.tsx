@@ -61,7 +61,7 @@ export default async function RcmsPage() {
         <p className="mt-3 rounded-lg bg-slate-100 px-4 py-6 text-center text-sm text-slate-500">아직 대조할 데이터가 없습니다.</p>
       ) : (
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[960px] text-sm [&_th]:whitespace-nowrap">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
                 <th className="px-4 py-2.5 font-medium">과제</th>
@@ -78,26 +78,26 @@ export default async function RcmsPage() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.y.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-2.5">
-                    <p className="font-medium text-slate-800">{r.y.project.name}</p>
+                  <td className="min-w-[260px] px-4 py-2.5">
+                    <p className="break-keep font-medium text-slate-800">{r.y.project.name}</p>
                     <p className="text-xs text-slate-400">{r.y.project.code ?? "-"}</p>
                   </td>
-                  <td className="px-4 py-2.5 text-slate-600">{r.y.yearNo}년차</td>
-                  <td className="px-4 py-2.5 text-right text-slate-800">{won(r.y.budgetCash)}</td>
-                  <td className="px-4 py-2.5 text-right text-red-600">{won(r.rcms)}</td>
-                  <td className="px-4 py-2.5 text-right text-amber-700">{won(r.pending)}</td>
-                  <td className={`px-4 py-2.5 text-right font-semibold ${r.available < 0 ? "text-red-700" : "text-slate-900"}`}>{won(r.available)}</td>
-                  <td className="px-4 py-2.5 text-center text-xs text-slate-600">
+                  <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">{r.y.yearNo}년차</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right text-slate-800">{won(r.y.budgetCash)}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right text-red-600">{won(r.rcms)}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right text-amber-700">{won(r.pending)}</td>
+                  <td className={`whitespace-nowrap px-4 py-2.5 text-right font-semibold ${r.available < 0 ? "text-red-700" : "text-slate-900"}`}>{won(r.available)}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-center text-xs text-slate-600">
                     {r.matched}/{r.y.rcmsRecords.length}
                     {r.unmatched > 0 && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">미매칭 {r.unmatched}</span>}
                   </td>
-                  <td className="px-4 py-2.5 text-center text-xs">
+                  <td className="whitespace-nowrap px-4 py-2.5 text-center text-xs">
                     {r.danger > 0 && <span className="mr-1 rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">🔴 {r.danger}</span>}
                     {r.warn > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-700">⚠️ {r.warn}</span>}
                     {r.danger + r.warn === 0 && <span className="text-slate-400">-</span>}
                   </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <Link href={`/rcms/${r.y.id}`} className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700">대조표</Link>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                    <Link href={`/rcms/${r.y.id}`} className="whitespace-nowrap rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700">대조표</Link>
                   </td>
                 </tr>
               ))}

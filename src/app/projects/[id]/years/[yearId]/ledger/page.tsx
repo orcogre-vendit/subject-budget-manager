@@ -212,11 +212,11 @@ export default async function LedgerPage({
       ) : (
         <>
         <div className="mt-3 hidden max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
-          <table className="min-w-[990px] w-full table-fixed text-sm">
+          <table className="min-w-[1024px] w-full table-fixed text-sm">
             <colgroup>
               <col className="w-[50px]" />
               <col className="w-[120px]" />
-              <col className="w-[80px]" />
+              <col className="w-[112px]" />
               <col className="w-[260px]" />
               <col />
               <col className="w-[80px]" />
@@ -268,7 +268,7 @@ export default async function LedgerPage({
                       </span>
                       {t.rcmsRecord && (
                         <span
-                          className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                          className={`mt-1 block w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                             t.rcmsRecord.missingSince
                               ? "bg-green-100 text-green-700"
                               : t.rcmsRecord.progress === "임시저장"
