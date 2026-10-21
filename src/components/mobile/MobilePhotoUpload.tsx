@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { EVIDENCE_CODES } from "@/lib/evidence";
 import { ALLOWED_EXT, MAX_UPLOAD_BYTES, extOf, normalizeFileName } from "@/lib/uploadRules";
 import { uploadToStaging } from "@/lib/upload-client";
-import { shrinkPhoto } from "@/lib/image-client";
+import { preparePhoto } from "@/lib/image-client";
 import type { FormState } from "@/app/projects/actions";
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
@@ -56,7 +56,7 @@ export default function MobilePhotoUpload({
     for (let i = 0; i < files.length; i++) {
       set(i, { state: "올리는 중" });
       try {
-        const small = await shrinkPhoto(files[i]);
+        const small = await preparePhoto(files[i]); // HEIC → JPG, 긴 변 2560px
         const name = normalizeFileName(small.name);
         if (!ALLOWED_EXT.has(extOf(name))) throw new Error("허용되지 않는 형식");
         if (small.size > MAX_UPLOAD_BYTES) throw new Error("20MB 초과");
@@ -125,7 +125,7 @@ export default function MobilePhotoUpload({
         </button>
       </div>
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => run(e.target.files)} />
-      <input ref={albumRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => run(e.target.files)} />
+      <input ref={albumRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif,application/pdf" multiple className="hidden" onChange={(e) => run(e.target.files)} />
 
       {rows.length > 0 && (
         <ul className="mt-3 space-y-1 text-sm">

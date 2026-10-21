@@ -5,6 +5,7 @@ import { EVIDENCE_CODES } from "@/lib/evidence";
 import { ALLOWED_EXT, MAX_UPLOAD_BYTES, extOf, normalizeFileName } from "@/lib/uploadRules";
 import { pickEvidenceFileName, type NamingContext } from "@/lib/evidenceName";
 import { uploadToStaging } from "@/lib/upload-client";
+import { heicToJpeg, isHeic } from "@/lib/image-client";
 
 export type UploadStatus = "uploading" | "done" | "error";
 
@@ -21,6 +22,8 @@ export type PickedEvidence = {
   status: UploadStatus;
   key: string | null;
   error: string | null;
+  /** HEIC 를 JPEG 로 바꾸는 중 */
+  converting?: boolean;
 };
 
 /** 파일명으로 증빙 유형 추측 — 순서대로 첫 매치. 못 맞히면 빈 값(사용자가 고름) */
@@ -125,10 +128,18 @@ export default function EvidenceDropInput({
 
   const upload = async (row: PickedEvidence) => {
     try {
-      const staged = await uploadToStaging(row.file);
+      let file = row.file;
+      if (isHeic(file)) {
+        // 아이폰 HEIC → JPEG (RCMS 허용 형식). 바뀐 파일·이름으로 이후 저장·AI 분석이 이어진다
+        patch(row.id, { converting: true });
+        file = await heicToJpeg(file);
+        if (file.size > MAX_UPLOAD_BYTES) throw new Error("변환 후 20MB 초과");
+        patch(row.id, { file, name: normalizeFileName(file.name), converting: false });
+      }
+      const staged = await uploadToStaging(file);
       patch(row.id, { status: "done", key: staged.key, error: null });
     } catch (e) {
-      patch(row.id, { status: "error", key: null, error: e instanceof Error ? e.message : "업로드 실패" });
+      patch(row.id, { status: "error", key: null, converting: false, error: e instanceof Error ? e.message : "업로드 실패" });
     }
   };
 
@@ -136,8 +147,10 @@ export default function EvidenceDropInput({
     const next: PickedEvidence[] = [...files]
       .filter((f) => f.size > 0)
       .map((f) => {
-        const name = normalizeFileName(f.name);
-        const problem = problemOf(name, f.size);
+        const heic = isHeic(f);
+        // HEIC 는 올릴 때 JPEG 로 바뀌므로 이름·형식 검사는 .jpg 기준 (크기는 변환 뒤 다시 본다)
+        const name = normalizeFileName(heic ? f.name.replace(/\.[^.]+$/, "") + ".jpg" : f.name);
+        const problem = heic ? null : problemOf(name, f.size);
         return {
           id: seq.current++,
           file: f,
@@ -201,7 +214,7 @@ export default function EvidenceDropInput({
       >
         <span className="text-2xl" aria-hidden>📎</span>
         <span className="mt-1 text-slate-700">파일을 여기에 끌어다 놓거나 클릭해서 선택</span>
-        <span className="mt-0.5 text-xs text-slate-400">여러 개 가능 · PDF·이미지·오피스·HWP · 개당 20MB · DRM·암호화 금지</span>
+        <span className="mt-0.5 text-xs text-slate-400">여러 개 가능 · PDF·이미지(아이폰 HEIC 는 JPG 로 변환)·오피스·HWP · 개당 20MB · DRM·암호화 금지</span>
       </div>
       {/* name 없음 → 제출되지 않는 탐색용 input */}
       <input ref={browseRef} type="file" multiple onChange={onBrowse} className="hidden" tabIndex={-1} aria-hidden />
@@ -216,7 +229,7 @@ export default function EvidenceDropInput({
                 <p className="text-xs text-slate-400">
                   {human(p.file.size)}
                   {p.problem && <span className="ml-2 font-medium text-red-600">{p.problem} · 업로드에서 제외</span>}
-                  {!p.problem && p.status === "uploading" && <span className="ml-2 text-blue-600">업로드 중…</span>}
+                  {!p.problem && p.status === "uploading" && <span className="ml-2 text-blue-600">{p.converting ? "HEIC → JPG 변환 중…" : "업로드 중…"}</span>}
                   {!p.problem && p.status === "error" && (
                     <span className="ml-2 font-medium text-red-600">
                       {p.error ?? "업로드 실패"}{" "}
