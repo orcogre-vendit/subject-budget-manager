@@ -5,13 +5,22 @@ import { SESSION_COOKIE, authEnabled, verifySession } from "@/lib/auth/session";
 
 const PUBLIC_PREFIXES = ["/login", "/api/auth/", "/api/health"];
 
+/** 휴대폰으로 첫 화면(/)에 들어오면 모바일 화면(/m)으로. ?pc=1 이면 PC 화면 그대로 */
+function mobileHome(request: NextRequest): NextResponse | null {
+  const { pathname, searchParams } = request.nextUrl;
+  if (pathname !== "/" || searchParams.has("pc")) return null;
+  const ua = request.headers.get("user-agent") ?? "";
+  if (!/iPhone|Android.+Mobile|Mobile Safari|SamsungBrowser.+Mobile/i.test(ua)) return null;
+  return NextResponse.redirect(new URL("/m", process.env.APP_URL || request.url));
+}
+
 export function proxy(request: NextRequest) {
-  if (!authEnabled()) return NextResponse.next();
+  if (!authEnabled()) return mobileHome(request) ?? NextResponse.next();
   const { pathname, search } = request.nextUrl;
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) return NextResponse.next();
 
   const session = verifySession(request.cookies.get(SESSION_COOKIE)?.value);
-  if (session) return NextResponse.next();
+  if (session) return mobileHome(request) ?? NextResponse.next();
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });

@@ -16,6 +16,8 @@ export type SidebarUser = { email: string; name: string; picture: string };
 
 export default function Sidebar({ user }: { user: SidebarUser | null }) {
   const pathname = usePathname();
+  // 모바일 화면(/m)은 자체 상단바를 쓴다
+  if (pathname === "/m" || pathname.startsWith("/m/")) return null;
 
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-slate-200 bg-white md:w-60 md:border-r md:border-b-0">
@@ -24,6 +26,12 @@ export default function Sidebar({ user }: { user: SidebarUser | null }) {
         <p className="mt-0.5 hidden text-xs text-slate-500 md:block">예산집행 관리</p>
       </div>
       <nav className="flex gap-1 overflow-x-auto p-2 md:flex-col md:gap-0.5 md:p-3">
+        <Link
+          href="/m"
+          className="flex shrink-0 items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold whitespace-nowrap text-white md:hidden"
+        >
+          📱 모바일 화면
+        </Link>
         {NAV.map((item) => {
           // 연차 예산표(/projects/…/years/…/budget)는 "예산표" 메뉴로, "/budgets" 가 "/budget"(기준정보)에 걸리지 않게 경로 단위로 비교
           const onBudgetTable = /\/years\/[^/]+\/budget$/.test(pathname);
