@@ -6,7 +6,8 @@ import { allocationOf } from "@/lib/budget";
 import { sameCategoryName } from "@/lib/budgetStandard";
 import { toMonth, type FundType } from "@/lib/participation";
 import ParticipationEditor from "@/components/ParticipationEditor";
-import { saveParticipation } from "./actions";
+import QuickProjectForm from "@/components/QuickProjectForm";
+import { quickCreateProject, saveParticipation } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function ParticipationPage({ searchParams }: { searchParams
       <div className="mx-auto max-w-6xl">
         <h1 className="text-2xl font-bold text-slate-900">참여율 계산</h1>
         <p className="mt-6 rounded-lg bg-slate-100 px-4 py-8 text-center text-sm text-slate-500">과제 연차가 없습니다.</p>
+        <div className="mt-3"><QuickProjectForm action={quickCreateProject} /></div>
       </div>
     );
   }
@@ -50,17 +52,19 @@ export default async function ParticipationPage({ searchParams }: { searchParams
         자동 계산은 합계가 편성액을 넘지 않게 맞춥니다.
       </p>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         {years.map((y) => (
           <Link
             key={y.id}
             href={`/researchers/participation?year=${y.id}`}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium ${y.id === year.id ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"}`}
           >
-            {y.project.code ?? y.project.name} · {y.yearNo}년차
+            {y.project.code ?? y.project.name} · {y.label ?? `${y.yearNo}년차`}
           </Link>
         ))}
+        <QuickProjectForm action={quickCreateProject} />
       </div>
+      <p className="mt-2 break-keep text-sm font-medium text-slate-700">{year.project.name}</p>
 
       <ParticipationEditor
         key={year.id}
@@ -82,6 +86,7 @@ export default async function ParticipationPage({ searchParams }: { searchParams
           baseSalary: p.baseSalary,
           rateBp: p.rateBp,
           locked: !!p.rateLocked,
+          amountOverride: p.amountOverride,
         }))}
         save={saveParticipation}
       />
