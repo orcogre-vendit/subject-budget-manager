@@ -282,21 +282,22 @@ model EvidenceRequirement {
 /// 연구원 참여 계획(협약용) — 연차별로 연구원·현금/현물 구분·참여기간·기준연봉·참여율.
 /// 계상액 = floor(기준연봉 × 참여율 ÷ 12) × 개월. 계산은 src/lib/participation.ts (정수 연산, 참여율 0.01% 단위)
 model Participation {
-  id            String      @id @default(uuid()) @db.Uuid
-  projectYearId String      @db.Uuid
-  projectYear   ProjectYear @relation(fields: [projectYearId], references: [id], onDelete: Cascade)
-  researcherId  String      @db.Uuid
-  researcher    Researcher  @relation(fields: [researcherId], references: [id], onDelete: Restrict)
-  fundType      String // CASH | IN_KIND
-  role          String? // 연구책임자 | 참여연구원 등
-  startMonth    String // "YYYY-MM"
-  endMonth      String // "YYYY-MM"
-  baseSalary    Int // 기준연봉(원)
-  rateBp        Int // 참여율(0.01% 단위, 3050 = 30.5%)
-  rateLocked    Boolean? // 자동 계산에서 제외
-  sortOrder     Int         @default(0)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id             String      @id @default(uuid()) @db.Uuid
+  projectYearId  String      @db.Uuid
+  projectYear    ProjectYear @relation(fields: [projectYearId], references: [id], onDelete: Cascade)
+  researcherId   String      @db.Uuid
+  researcher     Researcher  @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  fundType       String // CASH | IN_KIND
+  role           String? // 연구책임자 | 참여연구원 등
+  startMonth     String // "YYYY-MM"
+  endMonth       String // "YYYY-MM"
+  baseSalary     Int // 기준연봉(원)
+  rateBp         Int // 참여율(0.01% 단위, 3050 = 30.5%)
+  rateLocked     Boolean? // 자동 계산에서 제외
+  amountOverride Int? // 끝전 맞춤: 목표와 원 단위까지 맞추려고 이 줄의 계상액을 직접 지정(참여율로 계산한 값 + 끝전). 참여율·연봉·기간을 고치면 지워진다
+  sortOrder      Int         @default(0)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@index([projectYearId])
   @@index([researcherId])

@@ -5,6 +5,8 @@ import { useMemo, useRef, useState } from "react";
 import {
   FUND_LABEL,
   FULL_BP,
+  baseAmount,
+  fitExact,
   fmtRate,
   monthlyPay,
   monthsBetween,
@@ -79,19 +81,36 @@ export default function ParticipationEditor({
   const nameOf = useMemo(() => new Map(researchers.map((r) => [r.id, r.name])), [researchers]);
 
   const update = (key: string, patch: Partial<Row>) => {
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    // 계상액에 영향을 주는 값을 바꾸면 끝전 맞춤은 풀린다
+    const affects = "baseSalary" in patch || "rateBp" in patch || "startMonth" in patch || "endMonth" in patch;
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch, ...(affects ? { amountOverride: null } : {}) } : r)));
     setDirty(true);
   };
   const addRow = (fundType: FundType) => {
     setRows((prev) => [
       ...prev,
-      { key: newKey(), researcherId: "", fundType, role: "", startMonth: defaultStart, endMonth: defaultEnd, baseSalary: 0, rateBp: 0, locked: false },
+      { key: newKey(), researcherId: "", fundType, role: "", startMonth: defaultStart, endMonth: defaultEnd, baseSalary: 0, rateBp: 0, locked: false, amountOverride: null },
     ]);
     setDirty(true);
   };
   const removeRow = (key: string) => {
     setRows((prev) => prev.filter((r) => r.key !== key));
     setDirty(true);
+  };
+  const fit = (fundType: FundType) => {
+    const res = fitExact(rows, fundType, targets[fundType]);
+    if (!res.ok) {
+      setStatus({ ok: false, text: `${FUND_LABEL[fundType]}: ${res.reason}` });
+      return;
+    }
+    const who = nameOf.get(rows.find((r) => r.key === res.key)?.researcherId ?? "") ?? "마지막 사람";
+    setRows(res.rows as Row[]);
+    setRateText({});
+    setDirty(true);
+    setStatus({
+      ok: true,
+      text: `${FUND_LABEL[fundType]}: ${who} 참여율 ${fmtRate(res.rateBp)}%${res.remainder ? `, 끝전 +${res.remainder.toLocaleString("ko-KR")}원` : ""} → 목표와 딱 맞음 (🔒 고정됨)`,
+    });
   };
   const solve = (fundType: FundType) => {
     setRows((prev) => solveRates(prev, fundType, targets[fundType], unit, mode) as Row[]);
@@ -119,6 +138,7 @@ export default function ParticipationEditor({
         baseSalary: r.baseSalary,
         rateBp: r.rateBp,
         locked: r.locked,
+        amountOverride: r.amountOverride ?? null,
       })),
     });
     setSaving(false);
@@ -130,9 +150,9 @@ export default function ParticipationEditor({
 
   /** 엑셀·한글 표에 붙여넣기용 (탭 구분) */
   const copyTable = async () => {
-    const head = ["구분", "성명", "역할", "참여시작", "참여종료", "개월", "기준연봉", "참여율(%)", "월 인건비", "계상액"];
+    const head = ["구분", "성명", "역할", "참여시작", "참여종료", "개월", "기준연봉", "참여율(%)", "월 인건비", "계상액", "끝전"];
     const lines = rows.map((r) =>
-      [FUND_LABEL[r.fundType], nameOf.get(r.researcherId) ?? "", r.role, r.startMonth, r.endMonth, monthsBetween(r.startMonth, r.endMonth), r.baseSalary, fmtRate(r.rateBp), monthlyPay(r.baseSalary, r.rateBp), rowAmount(r)].join("\t"),
+      [FUND_LABEL[r.fundType], nameOf.get(r.researcherId) ?? "", r.role, r.startMonth, r.endMonth, monthsBetween(r.startMonth, r.endMonth), r.baseSalary, fmtRate(r.rateBp), monthlyPay(r.baseSalary, r.rateBp), rowAmount(r), rowAmount(r) - baseAmount(r) || ""].join("\t"),
     );
     try {
       await navigator.clipboard.writeText([head.join("\t"), ...lines].join("\n"));
@@ -207,6 +227,15 @@ export default function ParticipationEditor({
                   className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-40"
                 >
                   🧮 {FUND_LABEL[g]} 참여율 자동 계산
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fit(g)}
+                  disabled={!list.length || targets[g] <= 0}
+                  title="마지막 줄의 참여율을 0.01% 단위로 올리고, 남는 끝전을 그 사람 계상액에 얹어 목표와 원 단위까지 맞춥니다"
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+                >
+                  🎯 마지막 사람으로 딱 맞추기
                 </button>
               </div>
             </div>
@@ -286,7 +315,14 @@ export default function ParticipationEditor({
                           {over && <p className="mt-0.5 text-[10px] font-semibold text-red-600">이 사람 합계 {fmtRate(perPerson.get(r.researcherId) ?? 0)}% (100% 초과)</p>}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-right text-slate-600">{monthlyPay(r.baseSalary, r.rateBp).toLocaleString("ko-KR")}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-slate-900">{rowAmount(r).toLocaleString("ko-KR")}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-slate-900">
+                          {rowAmount(r).toLocaleString("ko-KR")}
+                          {r.amountOverride != null && r.amountOverride !== baseAmount(r) && (
+                            <span className="block text-[10px] font-semibold text-emerald-700" title="목표와 원 단위까지 맞추려고 얹은 금액">
+                              끝전 {r.amountOverride - baseAmount(r) > 0 ? "+" : ""}{(r.amountOverride - baseAmount(r)).toLocaleString("ko-KR")}원
+                            </span>
+                          )}
+                        </td>
                         <td className="whitespace-nowrap px-3 py-2 text-right">
                           <button type="button" onClick={() => removeRow(r.key)} className="text-xs font-medium text-red-600 hover:underline">삭제</button>
                         </td>

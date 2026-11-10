@@ -18,6 +18,8 @@ export type PlanRow = {
   baseSalary: number; // 기준연봉(원)
   rateBp: number; // 참여율(0.01% 단위)
   locked: boolean; // 참여율 고정(자동 계산에서 제외)
+  /** 끝전 맞춤으로 지정한 계상액(참여율로 계산한 값 + 끝전). 없으면 계산값 */
+  amountOverride?: number | null;
 };
 
 const MONTH_RE = /^(\d{4})-(\d{2})$/;
@@ -42,8 +44,14 @@ export function monthlyPay(baseSalary: number, rateBp: number): number {
   return Number((BigInt(Math.trunc(baseSalary)) * BigInt(Math.trunc(rateBp))) / BigInt(12 * FULL_BP));
 }
 
-export function rowAmount(r: Pick<PlanRow, "baseSalary" | "rateBp" | "startMonth" | "endMonth">): number {
+/** 참여율로 계산한 계상액 (끝전 지정 무시) */
+export function baseAmount(r: Pick<PlanRow, "baseSalary" | "rateBp" | "startMonth" | "endMonth">): number {
   return monthlyPay(r.baseSalary, r.rateBp) * monthsBetween(r.startMonth, r.endMonth);
+}
+
+/** 이 줄의 계상액 — 끝전 맞춤 값이 있으면 그것 */
+export function rowAmount(r: Pick<PlanRow, "baseSalary" | "rateBp" | "startMonth" | "endMonth" | "amountOverride">): number {
+  return r.amountOverride != null ? r.amountOverride : baseAmount(r);
 }
 
 /** 사람별 참여율 합(같은 계획 안의 모든 행 — 현금+현물) */
@@ -80,7 +88,7 @@ export function solveRates(rows: PlanRow[], fundType: FundType, target: number, 
     return per - (per % unit);
   };
 
-  const sumAt = (bp: number) => free.reduce((s, r) => s + rowAmount({ ...r, rateBp: Math.min(bp, cap(r)) }), 0);
+  const sumAt = (bp: number) => free.reduce((s, r) => s + baseAmount({ ...r, rateBp: Math.min(bp, cap(r)) }), 0);
 
   // 같은 참여율 r 의 최댓값 (단위 배수) — 이분 탐색
   let lo = 0;
@@ -95,15 +103,15 @@ export function solveRates(rows: PlanRow[], fundType: FundType, target: number, 
   const next = new Map(free.map((r) => [r.key, Math.min(r0, cap(r))]));
 
   if (mode === "fill") {
-    let total = free.reduce((s, r) => s + rowAmount({ ...r, rateBp: next.get(r.key)! }), 0);
-    const order = [...free].sort((a, b) => rowAmount({ ...b, rateBp: FULL_BP }) - rowAmount({ ...a, rateBp: FULL_BP }));
+    let total = free.reduce((s, r) => s + baseAmount({ ...r, rateBp: next.get(r.key)! }), 0);
+    const order = [...free].sort((a, b) => baseAmount({ ...b, rateBp: FULL_BP }) - baseAmount({ ...a, rateBp: FULL_BP }));
     let changed = true;
     while (changed) {
       changed = false;
       for (const r of order) {
         const cur = next.get(r.key)!;
         if (cur + unit > cap(r)) continue;
-        const delta = rowAmount({ ...r, rateBp: cur + unit }) - rowAmount({ ...r, rateBp: cur });
+        const delta = baseAmount({ ...r, rateBp: cur + unit }) - baseAmount({ ...r, rateBp: cur });
         if (total + delta <= budget) {
           next.set(r.key, cur + unit);
           total += delta;
@@ -112,7 +120,47 @@ export function solveRates(rows: PlanRow[], fundType: FundType, target: number, 
       }
     }
   }
-  return rows.map((r) => (next.has(r.key) ? { ...r, rateBp: next.get(r.key)! } : r));
+  // 자동 계산한 줄은 끝전 지정을 지운다 (참여율이 바뀌었으므로)
+  return rows.map((r) => (next.has(r.key) ? { ...r, rateBp: next.get(r.key)!, amountOverride: null } : r));
+}
+
+export type FitResult =
+  | { ok: true; rows: PlanRow[]; key: string; rateBp: number; remainder: number }
+  | { ok: false; reason: string };
+
+/**
+ * 마지막 사람으로 딱 맞추기 — 그룹의 마지막 줄 참여율을 0.01% 단위로 올려 목표에 최대한 붙이고,
+ * 남는 끝전(0.01% 한 단계 금액 미만)은 그 줄 계상액에 얹어 합계를 목표와 원 단위까지 같게 만든다.
+ * 그 줄은 🔒 고정해서 이후 자동 계산에서 바뀌지 않게 한다.
+ */
+export function fitExact(rows: PlanRow[], fundType: FundType, target: number): FitResult {
+  const group = rows.filter((r) => r.fundType === fundType);
+  const last = [...group].reverse().find((r) => r.baseSalary > 0 && monthsBetween(r.startMonth, r.endMonth) > 0);
+  if (!last) return { ok: false, reason: "기준연봉과 참여기간이 들어간 줄이 없습니다." };
+  const others = group.filter((r) => r !== last).reduce((s, r) => s + rowAmount(r), 0);
+  const need = target - others;
+  if (need < 0) return { ok: false, reason: `다른 사람들 계상액이 이미 목표보다 ${(-need).toLocaleString("ko-KR")}원 많습니다.` };
+
+  const used = rows.filter((r) => r !== last && r.researcherId === last.researcherId).reduce((s, r) => s + r.rateBp, 0);
+  const cap = Math.max(0, FULL_BP - used);
+  let lo = 0;
+  let hi = cap;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (baseAmount({ ...last, rateBp: mid }) <= need) lo = mid;
+    else hi = mid - 1;
+  }
+  const amount = baseAmount({ ...last, rateBp: lo });
+  const remainder = need - amount;
+  // 상한(100% − 이 사람의 다른 줄)에 걸려 멈춘 경우: 한 단계 더 올릴 금액보다 많이 모자라면 끝전으로 덮을 수 없다
+  const nextStep = baseAmount({ ...last, rateBp: lo + 1 }) - amount;
+  if (lo === cap && remainder > 0 && remainder >= Math.max(1, nextStep)) {
+    return { ok: false, reason: `마지막 사람이 참여율 상한(${fmtRate(cap)}%)에 걸려 ${remainder.toLocaleString("ko-KR")}원이 모자랍니다.` };
+  }
+  const out = rows.map((r) =>
+    r === last ? { ...r, rateBp: lo, locked: true, amountOverride: remainder > 0 ? need : null } : r,
+  );
+  return { ok: true, rows: out, key: last.key, rateBp: lo, remainder };
 }
 
 /** 참여율 표시: 3000 → "30", 3050 → "30.5", 3055 → "30.55" */
