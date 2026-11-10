@@ -202,6 +202,7 @@ export default function ParticipationEditor({
             </select>
           </div>
           <p className="mt-1 text-[11px] text-slate-400">🔒 고정한 줄은 그대로 두고 나머지만 맞춥니다.</p>
+          <p className="mt-1 text-[11px] text-slate-400">기준연봉은 이 과제·연차 계산에만 저장됩니다. 과제마다 달라도 됩니다.</p>
         </div>
       </div>
 
@@ -247,7 +248,9 @@ export default function ParticipationEditor({
                     <th className="px-3 py-2 font-medium">역할</th>
                     <th className="px-3 py-2 font-medium">참여기간</th>
                     <th className="px-3 py-2 text-right font-medium">개월</th>
-                    <th className="px-3 py-2 text-right font-medium">기준연봉</th>
+                    <th className="px-3 py-2 text-right font-medium" title="연봉은 이 과제·연차 계산에만 저장됩니다. 같은 연구원이라도 과제마다 다르게 넣을 수 있고, 연구원 명단에는 저장되지 않습니다.">
+                      기준연봉 <span className="font-normal text-slate-400">(이 과제 기준)</span>
+                    </th>
                     <th className="px-3 py-2 text-right font-medium">참여율(%)</th>
                     <th className="px-3 py-2 text-right font-medium">월 인건비</th>
                     <th className="px-3 py-2 text-right font-medium">계상액</th>
