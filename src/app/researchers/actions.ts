@@ -71,6 +71,8 @@ export async function updateResearcher(
 export async function deleteResearcher(formData: FormData): Promise<void> {
   const id = idOf(formData.get("id"));
   if (!id) return;
+  // 참여율 계획에 들어 있는 연구원은 지우지 않는다 (계획에서 먼저 빼야 함)
+  if (await prisma.participation.count({ where: { researcherId: id } })) return;
   await prisma.researcher.delete({ where: { id } });
   revalidatePath("/researchers");
 }

@@ -21,12 +21,20 @@ export default async function ResearchersPage() {
             표시
           </p>
         </div>
-        <Link
-          href="/researchers/new"
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-        >
-          + 새 연구원
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/researchers/participation"
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+          >
+            🧮 참여율 계산
+          </Link>
+          <Link
+            href="/researchers/new"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+          >
+            + 새 연구원
+          </Link>
+        </div>
       </div>
 
       {researchers.length === 0 ? (

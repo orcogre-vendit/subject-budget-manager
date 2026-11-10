@@ -48,7 +48,7 @@ model BudgetDetailItem {
 
 /// 연구원 명단 — ⚠️ 민감정보(주민번호/계좌/주소) 평문 저장(현 단계 결정)
 model Researcher {
-  id              String    @id @default(uuid()) @db.Uuid
+  id              String          @id @default(uuid()) @db.Uuid
   employeeNo      String? // 학번/사번
   name            String // 이름
   ssn             String? // 주민등록번호
@@ -63,9 +63,10 @@ model Researcher {
   homeAddress     String? // 집주소
   workAddress     String? // 직장주소
   researcherRegNo String? // 연구자등록번호
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  ledProjects     Project[] @relation("PI")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  ledProjects     Project[]       @relation("PI")
+  participations  Participation[]
 }
 
 /// 과제 (마스터) — 레거시 과제목록
@@ -101,20 +102,23 @@ model Project {
 
 /// 연차(차수/회계연도) — 레거시 "ITRC3년차" 같은 테이블 분할을 행으로 정규화
 model ProjectYear {
-  id           String        @id @default(uuid()) @db.Uuid
-  projectId    String        @db.Uuid
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  yearNo       Int // 1,2,3 년차
-  label        String? // 표시용 라벨(예: "ITRC3년차")
-  fiscalYear   Int? // 회계연도
-  budgetCash   Int           @default(0) // 당해연구현금(예산, 원)
-  startDate    DateTime?
-  endDate      DateTime?
-  ledgerType   String        @default("PROJECT") // PROJECT | PERSONAL_MILEAGE | LAB_MILEAGE
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  transactions Transaction[]
-  rcmsRecords  RcmsRecord[]
+  id                    String          @id @default(uuid()) @db.Uuid
+  projectId             String          @db.Uuid
+  project               Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  yearNo                Int // 1,2,3 년차
+  label                 String? // 표시용 라벨(예: "ITRC3년차")
+  fiscalYear            Int? // 회계연도
+  budgetCash            Int             @default(0) // 당해연구현금(예산, 원)
+  startDate             DateTime?
+  endDate               DateTime?
+  ledgerType            String          @default("PROJECT") // PROJECT | PERSONAL_MILEAGE | LAB_MILEAGE
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  transactions          Transaction[]
+  rcmsRecords           RcmsRecord[]
+  participations        Participation[]
+  personnelCashTarget   Int? // 참여율 계산의 현금 인건비 목표(원). 비우면 예산표의 내부인건비(현금) 현재 편성
+  personnelInKindTarget Int? // 참여율 계산의 현물 인건비 목표(원). 현물은 장부에 없어 직접 입력
 
   @@unique([projectId, yearNo])
 }
@@ -273,4 +277,27 @@ model EvidenceRequirement {
   sortOrder       Int           @default(0)
 
   @@unique([budgetSubItemId, code])
+}
+
+/// 연구원 참여 계획(협약용) — 연차별로 연구원·현금/현물 구분·참여기간·기준연봉·참여율.
+/// 계상액 = floor(기준연봉 × 참여율 ÷ 12) × 개월. 계산은 src/lib/participation.ts (정수 연산, 참여율 0.01% 단위)
+model Participation {
+  id            String      @id @default(uuid()) @db.Uuid
+  projectYearId String      @db.Uuid
+  projectYear   ProjectYear @relation(fields: [projectYearId], references: [id], onDelete: Cascade)
+  researcherId  String      @db.Uuid
+  researcher    Researcher  @relation(fields: [researcherId], references: [id], onDelete: Restrict)
+  fundType      String // CASH | IN_KIND
+  role          String? // 연구책임자 | 참여연구원 등
+  startMonth    String // "YYYY-MM"
+  endMonth      String // "YYYY-MM"
+  baseSalary    Int // 기준연봉(원)
+  rateBp        Int // 참여율(0.01% 단위, 3050 = 30.5%)
+  rateLocked    Boolean? // 자동 계산에서 제외
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([projectYearId])
+  @@index([researcherId])
 }
