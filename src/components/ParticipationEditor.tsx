@@ -5,7 +5,6 @@ import { useMemo, useRef, useState } from "react";
 import {
   FUND_LABEL,
   FULL_BP,
-  baseAmount,
   fitExact,
   fmtRate,
   monthlyPay,
@@ -73,6 +72,8 @@ export default function ParticipationEditor({
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** 딱 맞추기로 연봉을 조정한 줄 → 조정 전 연봉 (그 줄을 손으로 고치면 지운다) */
+  const [salaryAdj, setSalaryAdj] = useState<Record<string, number>>({});
 
   const targets: Record<FundType, number> = {
     CASH: cashTarget === "" ? ledgerCash : toInt(cashTarget),
@@ -83,6 +84,7 @@ export default function ParticipationEditor({
   const update = (key: string, patch: Partial<Row>) => {
     // 계상액에 영향을 주는 값을 바꾸면 끝전 맞춤은 풀린다
     const affects = "baseSalary" in patch || "rateBp" in patch || "startMonth" in patch || "endMonth" in patch;
+    if (affects) setSalaryAdj((p) => { if (!(key in p)) return p; const n = { ...p }; delete n[key]; return n; });
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch, ...(affects ? { amountOverride: null } : {}) } : r)));
     setDirty(true);
   };
@@ -104,12 +106,19 @@ export default function ParticipationEditor({
       return;
     }
     const who = nameOf.get(rows.find((r) => r.key === res.key)?.researcherId ?? "") ?? "마지막 사람";
+    const delta = res.salaryTo - res.salaryFrom;
     setRows(res.rows as Row[]);
     setRateText({});
+    setSalaryAdj((p) => {
+      const n = { ...p };
+      if (delta) n[res.key] = p[res.key] ?? res.salaryFrom;
+      else delete n[res.key];
+      return n;
+    });
     setDirty(true);
     setStatus({
       ok: true,
-      text: `${FUND_LABEL[fundType]}: ${who} 참여율 ${fmtRate(res.rateBp)}%${res.remainder ? `, 끝전 +${res.remainder.toLocaleString("ko-KR")}원` : ""} → 목표와 딱 맞음 (🔒 고정됨)`,
+      text: `${FUND_LABEL[fundType]}: ${who} 참여율 ${fmtRate(res.rateBp)}%${delta ? `, 기준연봉 ${res.salaryFrom.toLocaleString("ko-KR")} → ${res.salaryTo.toLocaleString("ko-KR")}원 (+${delta.toLocaleString("ko-KR")}원)` : ""} → 목표와 딱 맞음 (🔒 고정됨)`,
     });
   };
   const solve = (fundType: FundType) => {
@@ -150,9 +159,9 @@ export default function ParticipationEditor({
 
   /** 엑셀·한글 표에 붙여넣기용 (탭 구분) */
   const copyTable = async () => {
-    const head = ["구분", "성명", "역할", "참여시작", "참여종료", "개월", "기준연봉", "참여율(%)", "월 인건비", "계상액", "끝전"];
+    const head = ["구분", "성명", "역할", "참여시작", "참여종료", "개월", "기준연봉", "참여율(%)", "월 인건비(참고)", "계상액"];
     const lines = rows.map((r) =>
-      [FUND_LABEL[r.fundType], nameOf.get(r.researcherId) ?? "", r.role, r.startMonth, r.endMonth, monthsBetween(r.startMonth, r.endMonth), r.baseSalary, fmtRate(r.rateBp), monthlyPay(r.baseSalary, r.rateBp), rowAmount(r), rowAmount(r) - baseAmount(r) || ""].join("\t"),
+      [FUND_LABEL[r.fundType], nameOf.get(r.researcherId) ?? "", r.role, r.startMonth, r.endMonth, monthsBetween(r.startMonth, r.endMonth), r.baseSalary, fmtRate(r.rateBp), monthlyPay(r.baseSalary, r.rateBp), rowAmount(r)].join("\t"),
     );
     try {
       await navigator.clipboard.writeText([head.join("\t"), ...lines].join("\n"));
@@ -233,7 +242,7 @@ export default function ParticipationEditor({
                   type="button"
                   onClick={() => fit(g)}
                   disabled={!list.length || targets[g] <= 0}
-                  title="마지막 줄의 참여율을 0.01% 단위로 올리고, 남는 끝전을 그 사람 계상액에 얹어 목표와 원 단위까지 맞춥니다"
+                  title="마지막 줄의 참여율을 0.01% 단위로 올리고, 남는 우수리는 그 사람 기준연봉을 몇 원 올려 목표와 원 단위까지 맞춥니다"
                   className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
                 >
                   🎯 마지막 사람으로 딱 맞추기
@@ -252,7 +261,7 @@ export default function ParticipationEditor({
                       기준연봉 <span className="font-normal text-slate-400">(이 과제 기준)</span>
                     </th>
                     <th className="px-3 py-2 text-right font-medium">참여율(%)</th>
-                    <th className="px-3 py-2 text-right font-medium">월 인건비</th>
+                    <th className="px-3 py-2 text-right font-medium" title="기준연봉 × 참여율 ÷ 12 (참고용 — 계상액은 연봉 × 참여율 × 개월 ÷ 12 로 한 번에 계산)">월 인건비(참고)</th>
                     <th className="px-3 py-2 text-right font-medium">계상액</th>
                     <th className="px-3 py-2" />
                   </tr>
@@ -291,8 +300,13 @@ export default function ParticipationEditor({
                             value={r.baseSalary ? r.baseSalary.toLocaleString("ko-KR") : ""}
                             placeholder="0"
                             onChange={(e) => update(r.key, { baseSalary: toInt(e.target.value) })}
-                            className={`${cell} w-36 text-right`}
+                            className={`${cell} w-36 text-right ${salaryAdj[r.key] !== undefined ? "border-emerald-400 bg-emerald-50" : ""}`}
                           />
+                          {salaryAdj[r.key] !== undefined && (
+                            <span className="block text-[10px] font-semibold text-emerald-700" title={`조정 전 ${salaryAdj[r.key].toLocaleString("ko-KR")}원`}>
+                              우수리 맞춤 +{(r.baseSalary - salaryAdj[r.key]).toLocaleString("ko-KR")}원
+                            </span>
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-right">
                           <input
@@ -320,11 +334,6 @@ export default function ParticipationEditor({
                         <td className="whitespace-nowrap px-3 py-2 text-right text-slate-600">{monthlyPay(r.baseSalary, r.rateBp).toLocaleString("ko-KR")}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-slate-900">
                           {rowAmount(r).toLocaleString("ko-KR")}
-                          {r.amountOverride != null && r.amountOverride !== baseAmount(r) && (
-                            <span className="block text-[10px] font-semibold text-emerald-700" title="목표와 원 단위까지 맞추려고 얹은 금액">
-                              끝전 {r.amountOverride - baseAmount(r) > 0 ? "+" : ""}{(r.amountOverride - baseAmount(r)).toLocaleString("ko-KR")}원
-                            </span>
-                          )}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-right">
                           <button type="button" onClick={() => removeRow(r.key)} className="text-xs font-medium text-red-600 hover:underline">삭제</button>
