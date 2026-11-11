@@ -1,7 +1,7 @@
 // 참여율·인건비 계산 — 정수 연산만 (금액 원, 참여율 bp = 0.01%). 서버·클라이언트 공용 순수 함수.
 //
-// 월 인건비 = floor(기준연봉 × 참여율 ÷ 12)        (원 미만 버림)
-// 계상액   = 월 인건비 × 참여 개월수
+// 계상액   = floor(기준연봉 × 참여율 × 참여 개월수 ÷ 12)   (원 미만 버림, 협약서 계산식)
+// 월 인건비 = floor(기준연봉 × 참여율 ÷ 12)                 (참고용 표시)
 // 현금·현물 각각 편성액(목표)에 맞춰 "고정하지 않은" 사람들의 참여율을 정한다. 합계가 목표를 넘지 않게 버림.
 
 export const FULL_BP = 10000; // 100%
@@ -18,7 +18,7 @@ export type PlanRow = {
   baseSalary: number; // 기준연봉(원)
   rateBp: number; // 참여율(0.01% 단위)
   locked: boolean; // 참여율 고정(자동 계산에서 제외)
-  /** 끝전 맞춤으로 지정한 계상액(참여율로 계산한 값 + 끝전). 없으면 계산값 */
+  /** (1.6.0 의 끝전 맞춤 잔재) 지정 계상액. 1.7.0 부터 딱 맞추기는 연봉을 조정하므로 새로 생기지 않는다 */
   amountOverride?: number | null;
 };
 
@@ -46,12 +46,14 @@ export function monthlyPay(baseSalary: number, rateBp: number): number {
 
 /** 참여율로 계산한 계상액 (끝전 지정 무시) */
 export function baseAmount(r: Pick<PlanRow, "baseSalary" | "rateBp" | "startMonth" | "endMonth">): number {
-  return monthlyPay(r.baseSalary, r.rateBp) * monthsBetween(r.startMonth, r.endMonth);
+  const m = monthsBetween(r.startMonth, r.endMonth);
+  if (r.baseSalary <= 0 || r.rateBp <= 0 || m <= 0) return 0;
+  return Number((BigInt(Math.trunc(r.baseSalary)) * BigInt(Math.trunc(r.rateBp)) * BigInt(m)) / BigInt(12 * FULL_BP));
 }
 
-/** 이 줄의 계상액 — 끝전 맞춤 값이 있으면 그것 */
-export function rowAmount(r: Pick<PlanRow, "baseSalary" | "rateBp" | "startMonth" | "endMonth" | "amountOverride">): number {
-  return r.amountOverride != null ? r.amountOverride : baseAmount(r);
+/** 이 줄의 계상액. 1.6.0 의 끝전 지정(amountOverride)은 1.7.0 에서 계산식이 바뀌어 맞지 않으므로 무시한다 */
+export function rowAmount(r: Pick<PlanRow, "baseSalary" | "rateBp" | "startMonth" | "endMonth">): number {
+  return baseAmount(r);
 }
 
 /** 사람별 참여율 합(같은 계획 안의 모든 행 — 현금+현물) */
@@ -125,12 +127,13 @@ export function solveRates(rows: PlanRow[], fundType: FundType, target: number, 
 }
 
 export type FitResult =
-  | { ok: true; rows: PlanRow[]; key: string; rateBp: number; remainder: number }
+  | { ok: true; rows: PlanRow[]; key: string; rateBp: number; salaryFrom: number; salaryTo: number }
   | { ok: false; reason: string };
 
 /**
  * 마지막 사람으로 딱 맞추기 — 그룹의 마지막 줄 참여율을 0.01% 단위로 올려 목표에 최대한 붙이고,
- * 남는 끝전(0.01% 한 단계 금액 미만)은 그 줄 계상액에 얹어 합계를 목표와 원 단위까지 같게 만든다.
+ * 남는 우수리는 그 사람의 기준연봉을 조금 올려서(원 단위) 합계를 목표와 같게 만든다.
+ * 계상액 = floor(연봉 × 참여율 × 개월 ÷ 12) 이라 연봉 1원이 계상액 1원 미만으로 움직여 원 단위까지 맞출 수 있다.
  * 그 줄은 🔒 고정해서 이후 자동 계산에서 바뀌지 않게 한다.
  */
 export function fitExact(rows: PlanRow[], fundType: FundType, target: number): FitResult {
@@ -143,6 +146,7 @@ export function fitExact(rows: PlanRow[], fundType: FundType, target: number): F
 
   const used = rows.filter((r) => r !== last && r.researcherId === last.researcherId).reduce((s, r) => s + r.rateBp, 0);
   const cap = Math.max(0, FULL_BP - used);
+  // 1) 지금 연봉으로 목표를 넘지 않는 가장 큰 참여율(0.01% 단위)
   let lo = 0;
   let hi = cap;
   while (lo < hi) {
@@ -152,15 +156,27 @@ export function fitExact(rows: PlanRow[], fundType: FundType, target: number): F
   }
   const amount = baseAmount({ ...last, rateBp: lo });
   const remainder = need - amount;
-  // 상한(100% − 이 사람의 다른 줄)에 걸려 멈춘 경우: 한 단계 더 올릴 금액보다 많이 모자라면 끝전으로 덮을 수 없다
+  if (remainder > 0 && lo === 0) return { ok: false, reason: "마지막 사람의 참여율을 0.01%도 줄 수 없어 맞출 수 없습니다." };
+  // 상한에 걸려 0.01% 한 단계보다 많이 모자라면 연봉을 크게 올려야 하므로 맞추지 않는다
   const nextStep = baseAmount({ ...last, rateBp: lo + 1 }) - amount;
   if (lo === cap && remainder > 0 && remainder >= Math.max(1, nextStep)) {
     return { ok: false, reason: `마지막 사람이 참여율 상한(${fmtRate(cap)}%)에 걸려 ${remainder.toLocaleString("ko-KR")}원이 모자랍니다.` };
   }
-  const out = rows.map((r) =>
-    r === last ? { ...r, rateBp: lo, locked: true, amountOverride: remainder > 0 ? need : null } : r,
-  );
-  return { ok: true, rows: out, key: last.key, rateBp: lo, remainder };
+  // 2) 우수리를 연봉으로: floor(S × bp × m / 120000) = need 가 되는 가장 작은 S
+  let salary = last.baseSalary;
+  if (remainder > 0) {
+    const m = BigInt(monthsBetween(last.startMonth, last.endMonth));
+    const k = BigInt(lo) * m; // 연봉 1원당 계상액 증가분 × 120000
+    const denom = BigInt(12 * FULL_BP);
+    salary = Number((BigInt(need) * denom + k - BigInt(1)) / k); // ceil(need × 120000 / k)
+    const at = (sv: number) => Number((BigInt(sv) * k) / denom);
+    // 한 해를 넘는 기간(1원당 1원 넘게 움직임)에서 정확히 안 떨어지면 맞출 수 없다
+    if (at(salary) !== need) {
+      return { ok: false, reason: `참여기간이 12개월을 넘어 연봉 1원 단위로도 ${remainder.toLocaleString("ko-KR")}원을 정확히 맞출 수 없습니다.` };
+    }
+  }
+  const out = rows.map((r) => (r === last ? { ...r, rateBp: lo, baseSalary: salary, locked: true, amountOverride: null } : r));
+  return { ok: true, rows: out, key: last.key, rateBp: lo, salaryFrom: last.baseSalary, salaryTo: salary };
 }
 
 /** 참여율 표시: 3000 → "30", 3050 → "30.5", 3055 → "30.55" */

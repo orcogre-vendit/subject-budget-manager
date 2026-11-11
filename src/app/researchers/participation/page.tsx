@@ -48,7 +48,7 @@ export default async function ParticipationPage({ searchParams }: { searchParams
       <Link href="/researchers" className="text-sm text-slate-400 hover:text-slate-700">← 연구원 관리</Link>
       <h1 className="mt-2 text-2xl font-bold text-slate-900">참여율 계산</h1>
       <p className="mt-1 break-keep text-sm text-slate-500">
-        인건비 편성(현금·현물)에 맞춰 연구원별 참여율을 정합니다. 월 인건비 = 기준연봉 × 참여율 ÷ 12 (원 미만 버림), 계상액 = 월 인건비 × 참여 개월수.
+        인건비 편성(현금·현물)에 맞춰 연구원별 참여율을 정합니다. 계상액 = 기준연봉 × 참여율 × 참여 개월수 ÷ 12 (원 미만 버림).
         자동 계산은 합계가 편성액을 넘지 않게 맞춥니다.
       </p>
 
@@ -86,7 +86,7 @@ export default async function ParticipationPage({ searchParams }: { searchParams
           baseSalary: p.baseSalary,
           rateBp: p.rateBp,
           locked: !!p.rateLocked,
-          amountOverride: p.amountOverride,
+          amountOverride: null, // 1.7.0 부터 쓰지 않음 (저장 시 지워짐)
         }))}
         save={saveParticipation}
       />
