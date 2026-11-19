@@ -107,6 +107,12 @@ export default async function LedgerPage({
         >
           📊 예산표 보기
         </Link>
+        <Link
+          href={`/projects/${projectId}/years/${projectYearId}/amendments`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+        >
+          📝 협약변경
+        </Link>
         {year.ledgerType === "PROJECT" && (
           <Link
             href={`/rcms/${projectYearId}`}

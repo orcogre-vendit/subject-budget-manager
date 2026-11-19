@@ -102,21 +102,22 @@ model Project {
 
 /// 연차(차수/회계연도) — 레거시 "ITRC3년차" 같은 테이블 분할을 행으로 정규화
 model ProjectYear {
-  id                    String          @id @default(uuid()) @db.Uuid
-  projectId             String          @db.Uuid
-  project               Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id                    String            @id @default(uuid()) @db.Uuid
+  projectId             String            @db.Uuid
+  project               Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   yearNo                Int // 1,2,3 년차
   label                 String? // 표시용 라벨(예: "ITRC3년차")
   fiscalYear            Int? // 회계연도
-  budgetCash            Int             @default(0) // 당해연구현금(예산, 원)
+  budgetCash            Int               @default(0) // 당해연구현금(예산, 원)
   startDate             DateTime?
   endDate               DateTime?
-  ledgerType            String          @default("PROJECT") // PROJECT | PERSONAL_MILEAGE | LAB_MILEAGE
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  ledgerType            String            @default("PROJECT") // PROJECT | PERSONAL_MILEAGE | LAB_MILEAGE
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
   transactions          Transaction[]
   rcmsRecords           RcmsRecord[]
   participations        Participation[]
+  amendments            BudgetAmendment[]
   personnelCashTarget   Int? // 참여율 계산의 현금 인건비 목표(원). 비우면 예산표의 내부인건비(현금) 현재 편성
   personnelInKindTarget Int? // 참여율 계산의 현물 인건비 목표(원). 현물은 장부에 없어 직접 입력
 
@@ -154,6 +155,8 @@ model Transaction {
   budgetDetailItem   BudgetDetailItem?   @relation(fields: [budgetDetailItemId], references: [id])
   plannedAmount      Int? // 품의 시점 공급가액 — RCMS 매칭으로 amount 가 실집행액으로 갱신될 때 보존
   seqNo              Int? // 연차 안의 거래 연번(1부터, 생성 순). 첨부 파일명 "01-…" 의 번호. 삭제돼도 재사용하지 않음
+  amendmentId        String?             @db.Uuid // 이 조정 레코드를 만든 협약변경 (반영 취소 시 함께 삭제)
+  amendment          BudgetAmendment?    @relation(fields: [amendmentId], references: [id], onDelete: SetNull)
   budgetAdjust       Boolean? // 편성 조정 기록(협약변경 비목 재배분 등): IN=증액, OUT=감액. 집행·RCMS 대조에서 빠지고 편성액에만 반영. 기존 레코드는 고치지 않고 이 조정 레코드를 추가한다
   attachments        Attachment[]
   items              TransactionItem[]
@@ -301,4 +304,41 @@ model Participation {
 
   @@index([projectYearId])
   @@index([researcherId])
+}
+
+/// 협약변경 — 비목·세목별 변경 전/후 편성. 반영하면 장부에 조정 레코드(+입금 증액/−출금 감액)를 추가하고, 반영 취소하면 그 레코드만 지운다.
+/// 원 편성 레코드는 고치지 않는다(복식부기식). 현물·위탁처럼 장부에 없는 줄은 기록(대비표)용으로만 둔다.
+model BudgetAmendment {
+  id            String                @id @default(uuid()) @db.Uuid
+  projectYearId String                @db.Uuid
+  projectYear   ProjectYear           @relation(fields: [projectYearId], references: [id], onDelete: Cascade)
+  title         String // 예: "2026-07-09 협약변경"
+  effectiveDate DateTime // 변경 기준일(조정 레코드 날짜)
+  reason        String? // 변경 사유
+  status        String                @default("DRAFT") // DRAFT | APPLIED
+  appliedAt     DateTime?
+  lines         BudgetAmendmentLine[]
+  transactions  Transaction[]
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([projectYearId])
+}
+
+/// 협약변경 줄 — 비목(+세목·세세목) × 현금/현물. inLedger 면 반영 시 장부 조정 대상, 아니면 대비표 기록용(현물 인건비·위탁 등)
+model BudgetAmendmentLine {
+  id          String          @id @default(uuid()) @db.Uuid
+  amendmentId String          @db.Uuid
+  amendment   BudgetAmendment @relation(fields: [amendmentId], references: [id], onDelete: Cascade)
+  itemName    String
+  subName     String?
+  detailName  String?
+  fundType    String // CASH | IN_KIND
+  inLedger    Boolean? // 장부(현금 원장)에 반영하는 줄
+  beforeAmt   Int // 변경 전(원)
+  afterAmt    Int // 변경 후(원)
+  note        String? // 예: "신설"
+  sortOrder   Int             @default(0)
+
+  @@index([amendmentId])
 }
