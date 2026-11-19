@@ -119,7 +119,15 @@ export default async function BudgetTablePage({
         예산표 — {year.yearNo}년차
         <span className="ml-2 text-base font-normal text-slate-400">{year.project.code ?? ""}</span>
       </h1>
-      <p className="mt-1 break-keep text-sm text-slate-500">{year.project.name}</p>
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+        <p className="break-keep text-sm text-slate-500">{year.project.name}</p>
+        <Link
+          href={`/projects/${projectId}/years/${projectYearId}/amendments`}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 print:hidden"
+        >
+          📝 협약변경 이력·새로 작성
+        </Link>
+      </div>
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
